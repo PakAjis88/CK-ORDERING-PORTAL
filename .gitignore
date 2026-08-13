@@ -15,6 +15,10 @@ dist-ssr
 # Claude Code local settings (machine-specific, not shared)
 .claude/settings.local.json
 
+# Real outlet emails/phone-numbers-as-passwords + the service-role key —
+# never committed, even to a private repo
+scripts/private/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
