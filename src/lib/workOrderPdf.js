@@ -15,8 +15,7 @@ const printDateTime = () => {
     d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
 }
 
-export function downloadOrderPdf(order) {
-  const doc = new jsPDF({ unit: 'pt', format: 'a4' })
+function drawOrderPage(doc, order) {
   const W = doc.internal.pageSize.getWidth(), M = 40
   const teal = [13, 148, 136], ink = [15, 23, 42], mute = [100, 116, 139], line = [203, 213, 225]
   const amberFill = [255, 251, 235], brown = [146, 64, 14]
@@ -92,6 +91,26 @@ export function downloadOrderPdf(order) {
   ;[0, 1, 2].forEach((i) => doc.line(M + i * col, fy, M + i * col + col - 14, fy))
   doc.setFontSize(7.5); doc.setTextColor(...mute)
   doc.text('Disediakan oleh', M, fy + 12); doc.text('Disemak & diterima oleh', M + col, fy + 12); doc.text('Tarikh', M + 2 * col, fy + 12)
+}
 
+export function downloadOrderPdf(order) {
+  const doc = new jsPDF({ unit: 'pt', format: 'a4' })
+  drawOrderPage(doc, order)
   doc.save(`${order.order_no}.pdf`)
+}
+
+// One PDF, one page per order — for printing a whole day's work orders at once.
+export function downloadBatchPdf(orders, fileLabel) {
+  if (orders.length === 0) return
+  const doc = buildBatchDoc(orders)
+  doc.save(`ck-orders-${fileLabel}.pdf`)
+}
+
+function buildBatchDoc(orders) {
+  const doc = new jsPDF({ unit: 'pt', format: 'a4' })
+  orders.forEach((order, i) => {
+    if (i > 0) doc.addPage()
+    drawOrderPage(doc, order)
+  })
+  return doc
 }

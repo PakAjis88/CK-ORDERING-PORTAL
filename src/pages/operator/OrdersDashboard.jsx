@@ -1,9 +1,9 @@
 import { Fragment, useMemo, useState } from 'react'
 import { useT } from '../../lib/i18n'
-import { fmt, fmtDate, monthKey, monthLabel, dueDate } from '../../lib/format'
+import { fmt, fmtDate, monthKey, monthLabel, dueDate, todayISO } from '../../lib/format'
 import { displayStatus, deliveredCartons, orderedCartons, lineDelivered, STATUS_META } from '../../lib/orderStatus'
 import { recordDelivery } from '../../lib/api/orders'
-import { downloadOrderPdf } from '../../lib/workOrderPdf'
+import { downloadOrderPdf, downloadBatchPdf } from '../../lib/workOrderPdf'
 import { downloadCsv } from '../../lib/csv'
 import { Th, Td, Badge, Stat, Select, ReorderBadge } from '../../components/ui'
 
@@ -21,6 +21,13 @@ export default function OrdersDashboard({ now, orders, outlets, onChanged }) {
   const [expanded, setExpanded] = useState(null)
   const [draft, setDraft] = useState({})
   const [saving, setSaving] = useState(false)
+  const [printingBatch, setPrintingBatch] = useState(false)
+
+  const todaysOrders = useMemo(() => orders.filter((o) => o.order_date === todayISO() && !o.cancelled), [orders])
+  const printToday = () => {
+    setPrintingBatch(true)
+    try { downloadBatchPdf(todaysOrders, todayISO()) } finally { setPrintingBatch(false) }
+  }
 
   const rows = orders.filter((o) => {
     if (month !== 'all' && monthKey(o.order_date) !== month) return false
@@ -100,7 +107,13 @@ export default function OrdersDashboard({ now, orders, outlets, onChanged }) {
         <Select value={month} onChange={setMonth} label={t('month')} options={[['all', t('allMonths')], ...months.map((m) => [m, monthLabel(m)])]} />
         <Select value={outlet} onChange={setOutlet} label={t('colOutlet')} options={[['all', t('allOutlets')], ...outlets.map((o) => [o.id, o.name])]} />
         <Select value={status} onChange={setStatus} label={t('status')} options={[['all', t('allStatuses')], ['pending', t('stPending')], ['partial', t('stPartial')], ['overdue', t('stOverdue')], ['accomplished', t('stDone')], ['accomplished_late', t('stLate')], ['cancelled', t('stCancelled')]]} />
-        <button onClick={exportCsv} className="ml-auto text-sm bg-white border border-slate-300 hover:bg-slate-50 px-4 py-2 rounded-lg font-medium">{t('exportCsv')}</button>
+        <button
+          onClick={printToday} disabled={todaysOrders.length === 0 || printingBatch}
+          className="ml-auto text-sm bg-white border border-slate-300 hover:bg-slate-50 disabled:opacity-50 px-4 py-2 rounded-lg font-medium"
+        >
+          {printingBatch ? '…' : t('printBatch', { n: todaysOrders.length })}
+        </button>
+        <button onClick={exportCsv} className="text-sm bg-white border border-slate-300 hover:bg-slate-50 px-4 py-2 rounded-lg font-medium">{t('exportCsv')}</button>
       </div>
 
       <div className="bg-white border border-slate-200 rounded-xl overflow-x-auto">
