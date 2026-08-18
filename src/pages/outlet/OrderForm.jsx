@@ -50,7 +50,7 @@ export default function OrderForm({ products, orders, editOrder, onSubmit, onUpd
 
   return (
     <div className="grid lg:grid-cols-3 gap-5">
-      <div className="lg:col-span-2">
+      <div className="lg:col-span-2 pb-28 lg:pb-0">
         {editing && (
           <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-3 mb-4 flex items-center justify-between gap-3">
             <span className="text-sm text-indigo-900">{t('editingBanner', { orderNo: editOrder.order_no })}</span>
@@ -85,7 +85,7 @@ export default function OrderForm({ products, orders, editOrder, onSubmit, onUpd
                 const pending = outMap[p.id]
                 return (
                   <div key={p.id} className={`bg-white border rounded-xl p-3 ${pending ? 'border-amber-300' : 'border-slate-200'}`}>
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-start gap-3">
                       <Thumb />
                       <div className="flex-1 min-w-0">
                         <div className="font-medium text-sm leading-tight">{p.name}</div>
@@ -94,7 +94,7 @@ export default function OrderForm({ products, orders, editOrder, onSubmit, onUpd
                         </div>
                         {pending && <div className="text-[11px] text-amber-700 font-mono mt-0.5">⚠ {pending.cartons} {t('colCartons').toLowerCase()} {t('outstanding')}</div>}
                       </div>
-                      <div className="text-right font-mono text-sm w-24 shrink-0 text-slate-700">{c > 0 ? fmt(p.carton_price * c) : '—'}</div>
+                      <div className="text-right font-mono text-sm w-20 sm:w-24 shrink-0 text-slate-700">{c > 0 ? fmt(p.carton_price * c) : '—'}</div>
                     </div>
                     <div className="flex items-center gap-2 mt-2 pl-14">
                       <StepBtn onClick={() => bumpCartons(p.id, -1)}>−</StepBtn>
@@ -115,7 +115,7 @@ export default function OrderForm({ products, orders, editOrder, onSubmit, onUpd
         ))}
       </div>
 
-      <div className="lg:col-span-1">
+      <div className="hidden lg:block lg:col-span-1">
         <div className="bg-white border border-slate-200 rounded-xl p-4 lg:sticky lg:top-4">
           <div className="text-sm font-semibold mb-3">{t('orderSummary')}</div>
           {lines.length === 0 ? <p className="text-sm text-slate-500">{t('orderEmpty')}</p> : (
@@ -136,6 +136,22 @@ export default function OrderForm({ products, orders, editOrder, onSubmit, onUpd
           <button
             onClick={attempt} disabled={lines.length === 0 || submitting}
             className="w-full mt-4 bg-teal-600 hover:bg-teal-700 disabled:bg-slate-300 text-white font-medium py-2.5 rounded-lg transition"
+          >
+            {submitting ? '…' : editing ? t('saveChanges') : t('placeOrder')}
+          </button>
+        </div>
+      </div>
+
+      {/* Mobile: cart total + submit stay reachable without scrolling past every product */}
+      <div className="lg:hidden fixed bottom-0 inset-x-0 z-30 bg-white border-t border-slate-200 px-4 py-3 shadow-[0_-2px_8px_rgba(0,0,0,0.06)]">
+        <div className="flex items-center justify-between gap-3 max-w-6xl mx-auto">
+          <div className="min-w-0">
+            <div className="text-xs text-slate-500 truncate">{t('itemsCartons', { n: lines.length, c: totalCartons })}</div>
+            <div className="font-mono font-semibold">{fmt(total)}</div>
+          </div>
+          <button
+            onClick={attempt} disabled={lines.length === 0 || submitting}
+            className="shrink-0 bg-teal-600 hover:bg-teal-700 disabled:bg-slate-300 text-white font-medium py-2.5 px-5 rounded-lg transition"
           >
             {submitting ? '…' : editing ? t('saveChanges') : t('placeOrder')}
           </button>

@@ -11,6 +11,7 @@ node_modules
 dist
 dist-ssr
 *.local
+.netlify
 
 # Claude Code local settings (machine-specific, not shared)
 .claude/settings.local.json

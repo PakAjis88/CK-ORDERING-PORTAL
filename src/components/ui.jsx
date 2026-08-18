@@ -42,7 +42,7 @@ export function ReorderBadge() {
 }
 
 export function StepBtn({ onClick, children }) {
-  return <button type="button" onClick={onClick} className="w-8 h-8 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold flex items-center justify-center">{children}</button>
+  return <button type="button" onClick={onClick} className="w-9 h-9 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold flex items-center justify-center shrink-0">{children}</button>
 }
 
 export function Th({ children, right }) {

@@ -48,7 +48,7 @@ export default function StockReport({ products }) {
   const editable = windowOpen === true
 
   return (
-    <div>
+    <div className="pb-24 lg:pb-0">
       <div className={`rounded-xl px-4 py-3 mb-4 text-sm border ${editable ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-amber-50 border-amber-200 text-amber-800'}`}>
         {windowOpen === null ? '…' : editable ? t('windowOpen', { month: monthLabel(month) }) : t('windowClosed')}
       </div>
@@ -84,7 +84,7 @@ export default function StockReport({ products }) {
             ])}
           </tbody>
         </table>
-        <div className="p-3 border-t border-slate-200">
+        <div className="hidden lg:block p-3 border-t border-slate-200">
           <button
             onClick={submit} disabled={!editable || saving}
             className="bg-teal-600 hover:bg-teal-700 disabled:bg-slate-300 text-white text-sm font-medium px-5 py-2.5 rounded-lg transition"
@@ -92,6 +92,16 @@ export default function StockReport({ products }) {
             {saving ? '…' : t('submitStock')}
           </button>
         </div>
+      </div>
+
+      {/* Mobile: submit stays reachable without scrolling past the whole table */}
+      <div className="lg:hidden fixed bottom-0 inset-x-0 z-30 bg-white border-t border-slate-200 px-4 py-3 shadow-[0_-2px_8px_rgba(0,0,0,0.06)]">
+        <button
+          onClick={submit} disabled={!editable || saving}
+          className="w-full max-w-6xl mx-auto block bg-teal-600 hover:bg-teal-700 disabled:bg-slate-300 text-white font-medium py-2.5 rounded-lg transition"
+        >
+          {saving ? '…' : t('submitStock')}
+        </button>
       </div>
     </div>
   )
