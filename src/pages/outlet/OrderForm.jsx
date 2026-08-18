@@ -86,7 +86,7 @@ export default function OrderForm({ products, orders, editOrder, onSubmit, onUpd
                 return (
                   <div key={p.id} className={`bg-white border rounded-xl p-3 ${pending ? 'border-amber-300' : 'border-slate-200'}`}>
                     <div className="flex items-start gap-3">
-                      <Thumb />
+                      <Thumb src={p.photo_url} alt={p.name} />
                       <div className="flex-1 min-w-0">
                         <div className="font-medium text-sm leading-tight">{p.name}</div>
                         <div className="text-xs text-slate-500 font-mono">
