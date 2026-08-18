@@ -10,7 +10,7 @@ const ORDER_SELECT = `
     id, product_id, cartons_ordered,
     unit_price_snapshot, units_per_carton_snapshot, carton_price_snapshot, line_value,
     product:products(id, code, name, category),
-    delivery_batches(id, batch_no, qty, expiry_date)
+    delivery_batches(id, batch_no, qty, expiry_date, delivered_date)
   )
 `
 
@@ -66,7 +66,7 @@ export async function cancelOrder(orderId) {
   if (error) throw error
 }
 
-// lines: [{ orderLineId, batch1Qty, batch1Expiry, batch2Qty, batch2Expiry }]
+// lines: [{ orderLineId, batch1Qty, batch1Expiry, batch1DeliveredDate, batch2Qty, batch2Expiry, batch2DeliveredDate }]
 export async function recordDelivery(orderId, lines) {
   const { error } = await supabase.rpc('record_delivery', {
     p_order_id: orderId,
@@ -74,8 +74,10 @@ export async function recordDelivery(orderId, lines) {
       order_line_id: l.orderLineId,
       batch1_qty: l.batch1Qty || 0,
       batch1_expiry: l.batch1Expiry || null,
+      batch1_delivered_date: l.batch1DeliveredDate || null,
       batch2_qty: l.batch2Qty || 0,
       batch2_expiry: l.batch2Expiry || null,
+      batch2_delivered_date: l.batch2DeliveredDate || null,
     })),
   })
   if (error) throw error

@@ -116,6 +116,7 @@ create table delivery_batches (
   batch_no       smallint not null check (batch_no in (1, 2)),
   qty            integer not null check (qty > 0),
   expiry_date    date,
+  delivered_date date not null default current_date, -- real physical delivery date, operator-entered
   recorded_at    timestamptz not null default now(),
   recorded_by    uuid references auth.users(id),
   unique (order_line_id, batch_no)
@@ -452,7 +453,14 @@ $$;
 -- Operator: record delivery batches for an order's lines and recompute
 -- completed_date. p_lines: jsonb array of
 -- {"order_line_id": uuid, "batch1_qty": int, "batch1_expiry": date|null,
---  "batch2_qty": int, "batch2_expiry": date|null}
+--  "batch1_delivered_date": date|null, "batch2_qty": int,
+--  "batch2_expiry": date|null, "batch2_delivered_date": date|null}
+-- delivered_date defaults to current_date if omitted/blank, and must fall
+-- within [order_date, current_date]. completed_date is recomputed as
+-- max(delivered_date) across the order's batches every call (not frozen on
+-- first completion) — deliveries stay editable after completion (both
+-- batches unlock once a line is fully delivered), so the completion date
+-- must track corrections to it.
 create or replace function record_delivery(p_order_id uuid, p_lines jsonb)
 returns orders
 language plpgsql security definer set search_path = public as $$
@@ -462,8 +470,10 @@ declare
   v_ol order_lines%rowtype;
   v_q1 integer; v_q2 integer;
   v_e1 date; v_e2 date;
+  v_dd1 date; v_dd2 date;
   v_ordered_total integer;
   v_delivered_total integer;
+  v_max_delivered_date date;
 begin
   if not is_operator() then
     raise exception 'Only operators can record deliveries';
@@ -488,22 +498,33 @@ begin
     end if;
     v_e1 := nullif(v_line->>'batch1_expiry', '')::date;
     v_e2 := nullif(v_line->>'batch2_expiry', '')::date;
+    v_dd1 := coalesce(nullif(v_line->>'batch1_delivered_date', '')::date, current_date);
+    v_dd2 := coalesce(nullif(v_line->>'batch2_delivered_date', '')::date, current_date);
+
+    if v_q1 > 0 and (v_dd1 < v_order.order_date or v_dd1 > current_date) then
+      raise exception 'Batch 1 delivered date for line % must be between the order date and today', v_ol.id;
+    end if;
+    if v_q2 > 0 and (v_dd2 < v_order.order_date or v_dd2 > current_date) then
+      raise exception 'Batch 2 delivered date for line % must be between the order date and today', v_ol.id;
+    end if;
 
     if v_q1 > 0 then
-      insert into delivery_batches (order_line_id, batch_no, qty, expiry_date, recorded_by)
-      values (v_ol.id, 1, v_q1, v_e1, auth.uid())
+      insert into delivery_batches (order_line_id, batch_no, qty, expiry_date, delivered_date, recorded_by)
+      values (v_ol.id, 1, v_q1, v_e1, v_dd1, auth.uid())
       on conflict (order_line_id, batch_no) do update
         set qty = excluded.qty, expiry_date = excluded.expiry_date,
+            delivered_date = excluded.delivered_date,
             recorded_at = now(), recorded_by = excluded.recorded_by;
     else
       delete from delivery_batches where order_line_id = v_ol.id and batch_no = 1;
     end if;
 
     if v_q2 > 0 then
-      insert into delivery_batches (order_line_id, batch_no, qty, expiry_date, recorded_by)
-      values (v_ol.id, 2, v_q2, v_e2, auth.uid())
+      insert into delivery_batches (order_line_id, batch_no, qty, expiry_date, delivered_date, recorded_by)
+      values (v_ol.id, 2, v_q2, v_e2, v_dd2, auth.uid())
       on conflict (order_line_id, batch_no) do update
         set qty = excluded.qty, expiry_date = excluded.expiry_date,
+            delivered_date = excluded.delivered_date,
             recorded_at = now(), recorded_by = excluded.recorded_by;
     else
       delete from delivery_batches where order_line_id = v_ol.id and batch_no = 2;
@@ -515,10 +536,13 @@ begin
   select coalesce(sum(db.qty), 0) into v_delivered_total
     from delivery_batches db join order_lines ol on ol.id = db.order_line_id
     where ol.order_id = p_order_id;
+  select max(db.delivered_date) into v_max_delivered_date
+    from delivery_batches db join order_lines ol on ol.id = db.order_line_id
+    where ol.order_id = p_order_id;
 
   update orders
     set completed_date = case when v_delivered_total >= v_ordered_total
-                               then coalesce(completed_date, current_date)
+                               then v_max_delivered_date
                                else null end
     where id = p_order_id
     returning * into v_order;

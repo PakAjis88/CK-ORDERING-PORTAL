@@ -57,7 +57,10 @@ export default function OrdersDashboard({ now, orders, outlets, onChanged }) {
     setDraft(Object.fromEntries(o.order_lines.map((l) => {
       const b = l.delivery_batches || []
       const b1 = b.find((x) => x.batch_no === 1), b2 = b.find((x) => x.batch_no === 2)
-      return [l.id, { q1: b1?.qty || 0, e1: b1?.expiry_date || '', q2: b2?.qty || 0, e2: b2?.expiry_date || '' }]
+      return [l.id, {
+        q1: b1?.qty || 0, e1: b1?.expiry_date || '', dd1: b1?.delivered_date || todayISO(),
+        q2: b2?.qty || 0, e2: b2?.expiry_date || '', dd2: b2?.delivered_date || todayISO(),
+      }]
     })))
   }
   const setField = (lineId, field, val, ordered) => setDraft((d) => {
@@ -72,16 +75,23 @@ export default function OrdersDashboard({ now, orders, outlets, onChanged }) {
     const d = draft[l.id] || {}
     if (persisted > 0 && persisted < l.cartons_ordered) {
       const b1 = (l.delivery_batches || []).find((x) => x.batch_no === 1)
-      return [l.id, { q1: b1?.qty || 0, e1: b1?.expiry_date || '', q2: l.cartons_ordered - persisted, e2: d.e2 || '' }]
+      return [l.id, {
+        q1: b1?.qty || 0, e1: b1?.expiry_date || '', dd1: b1?.delivered_date || todayISO(),
+        q2: l.cartons_ordered - persisted, e2: d.e2 || '', dd2: d.dd2 || todayISO(),
+      }]
     }
-    return [l.id, { q1: l.cartons_ordered, e1: d.e1 || '', q2: 0, e2: '' }]
+    return [l.id, { q1: l.cartons_ordered, e1: d.e1 || '', dd1: d.dd1 || todayISO(), q2: 0, e2: '', dd2: todayISO() }]
   })))
   const save = async (o) => {
     setSaving(true)
     try {
       const lines = o.order_lines.map((l) => {
         const d = draft[l.id] || {}
-        return { orderLineId: l.id, batch1Qty: d.q1 || 0, batch1Expiry: d.e1 || null, batch2Qty: d.q2 || 0, batch2Expiry: d.e2 || null }
+        return {
+          orderLineId: l.id,
+          batch1Qty: d.q1 || 0, batch1Expiry: d.e1 || null, batch1DeliveredDate: d.dd1 || null,
+          batch2Qty: d.q2 || 0, batch2Expiry: d.e2 || null, batch2DeliveredDate: d.dd2 || null,
+        }
       })
       await recordDelivery(o.id, lines)
       await onChanged()
@@ -92,7 +102,7 @@ export default function OrdersDashboard({ now, orders, outlets, onChanged }) {
   }
 
   const exportCsv = () => {
-    const head = ['Order No', 'Outlet', 'Order Date', 'Due Date', 'Product', 'Ordered', 'Delivered', 'Outstanding', 'Batch1 Qty', 'Batch1 Expiry', 'Batch2 Qty', 'Batch2 Expiry', 'Line Value', 'Order Total', 'Status', 'Completed', 'Note']
+    const head = ['Order No', 'Outlet', 'Order Date', 'Due Date', 'Product', 'Ordered', 'Delivered', 'Outstanding', 'Batch1 Qty', 'Batch1 Delivered', 'Batch1 Expiry', 'Batch2 Qty', 'Batch2 Delivered', 'Batch2 Expiry', 'Line Value', 'Order Total', 'Status', 'Completed', 'Note']
     const out = [head.join(',')]
     rows.forEach((o) => {
       const st = STATUS_EN[displayStatus(o, now)]
@@ -102,7 +112,7 @@ export default function OrdersDashboard({ now, orders, outlets, onChanged }) {
         const b1 = b.find((x) => x.batch_no === 1), b2 = b.find((x) => x.batch_no === 2)
         out.push([
           o.order_no, `"${o.outlet.name}"`, o.order_date, due, `"${l.product.name}"`, l.cartons_ordered, lineDelivered(l), l.cartons_ordered - lineDelivered(l),
-          b1?.qty || '', b1?.expiry_date || '', b2?.qty || '', b2?.expiry_date || '',
+          b1?.qty || '', b1?.delivered_date || '', b1?.expiry_date || '', b2?.qty || '', b2?.delivered_date || '', b2?.expiry_date || '',
           Number(l.line_value).toFixed(2), Number(o.total).toFixed(2), st, o.completed_date || '', `"${o.note || ''}"`,
         ].join(','))
       })
@@ -176,13 +186,13 @@ export default function OrdersDashboard({ now, orders, outlets, onChanged }) {
                           </div>
                         </div>
                         <div className="border border-slate-200 rounded-lg overflow-x-auto bg-white">
-                          <table className="w-full text-sm min-w-[640px]">
+                          <table className="w-full text-sm min-w-[820px]">
                             <thead className="bg-slate-50 text-slate-400 text-xs">
-                              <tr><Th>{t('colProduct')}</Th><Th right>{t('ordered')}</Th><Th right>{t('del1')}</Th><Th>{t('exp1')}</Th><Th right>{t('del2')}</Th><Th>{t('exp2')}</Th><Th>{t('lineStatus')}</Th></tr>
+                              <tr><Th>{t('colProduct')}</Th><Th right>{t('ordered')}</Th><Th right>{t('del1')}</Th><Th>{t('date1')}</Th><Th>{t('exp1')}</Th><Th right>{t('del2')}</Th><Th>{t('date2')}</Th><Th>{t('exp2')}</Th><Th>{t('lineStatus')}</Th></tr>
                             </thead>
                             <tbody>
                               {sortedLines.map((l) => (
-                                <DeliveryLineRow key={l.id} l={l} d={draft[l.id] || { q1: 0, e1: '', q2: 0, e2: '' }} setField={setField} t={t} />
+                                <DeliveryLineRow key={l.id} l={l} d={draft[l.id] || { q1: 0, e1: '', dd1: todayISO(), q2: 0, e2: '', dd2: todayISO() }} setField={setField} t={t} />
                               ))}
                             </tbody>
                           </table>
@@ -240,11 +250,19 @@ function DeliveryLineRow({ l, d, setField, t }) {
         </Td>
         <Td>
           {b1Locked
+            ? <span className="font-mono text-xs text-slate-500">{fmtDate(d.dd1)}</span>
+            : <input type="date" value={d.dd1} onChange={(e) => setField(l.id, 'dd1', e.target.value, l.cartons_ordered)} className="border border-slate-300 rounded-md py-1 px-2 font-mono text-xs" />}
+        </Td>
+        <Td>
+          {b1Locked
             ? <span className="font-mono text-xs text-slate-500">{fmtDate(d.e1)}</span>
             : <input type="date" value={d.e1} onChange={(e) => setField(l.id, 'e1', e.target.value, l.cartons_ordered)} className={`border rounded-md py-1 px-2 font-mono text-xs ${(Number(d.q1) || 0) > 0 && !d.e1 ? 'border-amber-300' : 'border-slate-300'}`} />}
         </Td>
         <Td right>
           <input value={d.q2} onChange={(e) => setField(l.id, 'q2', parseInt(e.target.value.replace(/\D/g, ''), 10) || 0, l.cartons_ordered)} inputMode="numeric" className={`w-16 text-right border rounded-md py-1 px-2 font-mono text-sm ${isFollowUp ? 'bg-amber-100 border-amber-300' : 'border-slate-300'}`} />
+        </Td>
+        <Td>
+          <input type="date" value={d.dd2} onChange={(e) => setField(l.id, 'dd2', e.target.value, l.cartons_ordered)} className={`border rounded-md py-1 px-2 font-mono text-xs ${isFollowUp ? 'bg-amber-100 border-amber-300' : 'border-slate-300'}`} />
         </Td>
         <Td>
           <input type="date" value={d.e2} onChange={(e) => setField(l.id, 'e2', e.target.value, l.cartons_ordered)} className={`border rounded-md py-1 px-2 font-mono text-xs ${isFollowUp ? 'bg-amber-100 border-amber-300' : ((Number(d.q2) || 0) > 0 && !d.e2 ? 'border-amber-300' : 'border-slate-300')}`} />
@@ -258,7 +276,7 @@ function DeliveryLineRow({ l, d, setField, t }) {
       </tr>
       {isFollowUp && (
         <tr className="bg-amber-50 border-t border-amber-100">
-          <td colSpan={7} className="px-4 py-1.5 text-xs text-amber-700 font-medium">
+          <td colSpan={9} className="px-4 py-1.5 text-xs text-amber-700 font-medium">
             {t('outstandingFollowUp', { c: l.cartons_ordered - persistedDelivered })}
           </td>
         </tr>
