@@ -48,3 +48,20 @@ export function outstandingFor(orders) {
   })
   return Object.values(map).map((v) => ({ ...v, orderNos: [...v.orderNos] }))
 }
+
+// Cartons ordered vs. delivered per product, across every non-cancelled
+// order network-wide (any outlet, any order date) — drives the
+// "Production" tab floor briefing sheet. Unlike outstandingFor, this does
+// NOT filter out full orders: it needs the running ordered/delivered
+// totals per product so balance = ordered - delivered even when 0.
+export function productionSummary(orders) {
+  const map = {}
+  orders.filter((o) => !o.cancelled).forEach((o) => {
+    o.order_lines.forEach((l) => {
+      if (!map[l.product_id]) map[l.product_id] = { productId: l.product_id, product: l.product, ordered: 0, delivered: 0 }
+      map[l.product_id].ordered += l.cartons_ordered
+      map[l.product_id].delivered += lineDelivered(l)
+    })
+  })
+  return Object.values(map).map((v) => ({ ...v, balance: v.ordered - v.delivered }))
+}

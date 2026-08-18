@@ -8,6 +8,7 @@ import { Tabs } from '../../components/ui'
 import OrdersDashboard from './OrdersDashboard'
 import StockTracker from './StockTracker'
 import Catalogue from './Catalogue'
+import Production from './Production'
 
 export default function OperatorHome() {
   const { t } = useT()
@@ -39,11 +40,13 @@ export default function OperatorHome() {
             { id: 'orders', label: t('tabOrdersFulfil') },
             { id: 'stock', label: t('tabStockTracker') },
             { id: 'catalogue', label: t('tabCatalogue') },
+            { id: 'production', label: t('tabProduction') },
           ]}
         />
         {tab === 'orders' && <OrdersDashboard now={now} orders={orders} outlets={outlets} onChanged={refreshOrders} />}
         {tab === 'stock' && <StockTracker outlets={outlets} />}
         {tab === 'catalogue' && <Catalogue products={products} onChanged={refreshProducts} />}
+        {tab === 'production' && <Production orders={orders} />}
       </main>
     </div>
   )
