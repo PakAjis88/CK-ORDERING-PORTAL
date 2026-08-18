@@ -12,6 +12,18 @@ const STATUS_EN = {
   accomplished: 'Accomplished', accomplished_late: 'Done (late)', cancelled: 'Cancelled',
 }
 
+// Sort priority for lines inside the expanded delivery-entry table: a line
+// with an outstanding follow-up delivery (already partially delivered per
+// persisted delivery_batches) surfaces first, then untouched lines, then
+// fully-delivered lines last. Reads persisted data only (not the in-progress
+// `draft` state), so it doesn't reshuffle rows mid-edit during the session.
+const lineStage = (l) => {
+  const delivered = lineDelivered(l)
+  if (delivered > 0 && delivered < l.cartons_ordered) return 0 // needs follow-up
+  if (delivered === 0) return 1 // untouched
+  return 2 // fully delivered
+}
+
 export default function OrdersDashboard({ now, orders, outlets, onChanged }) {
   const { t } = useT()
   const months = useMemo(() => [...new Set(orders.map((o) => monthKey(o.order_date)))].sort().reverse(), [orders])
@@ -56,7 +68,12 @@ export default function OrdersDashboard({ now, orders, outlets, onChanged }) {
     return { ...d, [lineId]: { ...row, q1, q2 } }
   })
   const markAll = (o) => setDraft(Object.fromEntries(o.order_lines.map((l) => {
+    const persisted = lineDelivered(l)
     const d = draft[l.id] || {}
+    if (persisted > 0 && persisted < l.cartons_ordered) {
+      const b1 = (l.delivery_batches || []).find((x) => x.batch_no === 1)
+      return [l.id, { q1: b1?.qty || 0, e1: b1?.expiry_date || '', q2: l.cartons_ordered - persisted, e2: d.e2 || '' }]
+    }
     return [l.id, { q1: l.cartons_ordered, e1: d.e1 || '', q2: 0, e2: '' }]
   })))
   const save = async (o) => {
@@ -128,6 +145,7 @@ export default function OrdersDashboard({ now, orders, outlets, onChanged }) {
               const del = deliveredCartons(o), ord = orderedCartons(o)
               const isOpen = expanded === o.id
               const locked = o.cancelled
+              const sortedLines = isOpen ? [...o.order_lines].sort((a, b) => lineStage(a) - lineStage(b)) : null
               return (
                 <Fragment key={o.id}>
                   <tr className={`border-t border-slate-100 hover:bg-slate-50 ${locked ? 'opacity-50' : 'cursor-pointer'}`} onClick={() => (locked ? null : isOpen ? setExpanded(null) : openRow(o))}>
@@ -163,26 +181,9 @@ export default function OrdersDashboard({ now, orders, outlets, onChanged }) {
                               <tr><Th>{t('colProduct')}</Th><Th right>{t('ordered')}</Th><Th right>{t('del1')}</Th><Th>{t('exp1')}</Th><Th right>{t('del2')}</Th><Th>{t('exp2')}</Th><Th>{t('lineStatus')}</Th></tr>
                             </thead>
                             <tbody>
-                              {o.order_lines.map((l) => {
-                                const d = draft[l.id] || { q1: 0, e1: '', q2: 0, e2: '' }
-                                const del2 = (Number(d.q1) || 0) + (Number(d.q2) || 0)
-                                const lnSt = del2 >= l.cartons_ordered ? 'd' : del2 > 0 ? 'p' : 'o'
-                                return (
-                                  <tr key={l.id} className="border-t border-slate-100">
-                                    <Td>{l.product.name}</Td>
-                                    <Td right mono>{l.cartons_ordered}</Td>
-                                    <Td right><input value={d.q1} onChange={(e) => setField(l.id, 'q1', parseInt(e.target.value.replace(/\D/g, ''), 10) || 0, l.cartons_ordered)} inputMode="numeric" className="w-16 text-right border border-slate-300 rounded-md py-1 px-2 font-mono text-sm" /></Td>
-                                    <Td><input type="date" value={d.e1} onChange={(e) => setField(l.id, 'e1', e.target.value, l.cartons_ordered)} className={`border rounded-md py-1 px-2 font-mono text-xs ${(Number(d.q1) || 0) > 0 && !d.e1 ? 'border-amber-300' : 'border-slate-300'}`} /></Td>
-                                    <Td right><input value={d.q2} onChange={(e) => setField(l.id, 'q2', parseInt(e.target.value.replace(/\D/g, ''), 10) || 0, l.cartons_ordered)} inputMode="numeric" className="w-16 text-right border border-slate-300 rounded-md py-1 px-2 font-mono text-sm" /></Td>
-                                    <Td><input type="date" value={d.e2} onChange={(e) => setField(l.id, 'e2', e.target.value, l.cartons_ordered)} className={`border rounded-md py-1 px-2 font-mono text-xs ${(Number(d.q2) || 0) > 0 && !d.e2 ? 'border-amber-300' : 'border-slate-300'}`} /></Td>
-                                    <Td>
-                                      {lnSt === 'd' && <span className="text-xs text-emerald-600 font-medium">✓ {t('lnDelivered')}</span>}
-                                      {lnSt === 'p' && <span className="text-xs text-indigo-600 font-medium">{t('lnPartial')} · {t('remaining', { c: l.cartons_ordered - del2 })}</span>}
-                                      {lnSt === 'o' && <span className="text-xs text-amber-600 font-medium">{t('lnOutstanding')}</span>}
-                                    </Td>
-                                  </tr>
-                                )
-                              })}
+                              {sortedLines.map((l) => (
+                                <DeliveryLineRow key={l.id} l={l} d={draft[l.id] || { q1: 0, e1: '', q2: 0, e2: '' }} setField={setField} t={t} />
+                              ))}
                             </tbody>
                           </table>
                         </div>
@@ -211,4 +212,57 @@ function PdfBtn({ order, label }) {
     try { downloadOrderPdf(order) } finally { setBusy(false) }
   }
   return <button onClick={go} disabled={busy} className="text-xs border border-slate-300 hover:bg-slate-50 disabled:opacity-50 px-2.5 py-1 rounded-md font-medium">{busy ? '…' : (label || 'PDF')}</button>
+}
+
+// A line that's already partially delivered (per persisted delivery_batches)
+// locks batch 1's display to read-only and highlights batch 2 as the active
+// follow-up input, plus an extra banner row calling out what's still owed —
+// see plan doc for the "known limitation" note on lines with both batches
+// already used but still short (needs the schema's batch_no cap lifted,
+// out of scope here).
+function DeliveryLineRow({ l, d, setField, t }) {
+  const del2 = (Number(d.q1) || 0) + (Number(d.q2) || 0)
+  const lnSt = del2 >= l.cartons_ordered ? 'd' : del2 > 0 ? 'p' : 'o'
+  const persistedDelivered = lineDelivered(l)
+  const isFollowUp = persistedDelivered > 0 && persistedDelivered < l.cartons_ordered
+  const b1 = (l.delivery_batches || []).find((x) => x.batch_no === 1)
+  const b1Locked = isFollowUp && (b1?.qty || 0) > 0
+
+  return (
+    <Fragment>
+      <tr className="border-t border-slate-100">
+        <Td>{l.product.name}</Td>
+        <Td right mono>{l.cartons_ordered}</Td>
+        <Td right>
+          {b1Locked
+            ? <span className="font-mono text-sm text-slate-500">{d.q1}</span>
+            : <input value={d.q1} onChange={(e) => setField(l.id, 'q1', parseInt(e.target.value.replace(/\D/g, ''), 10) || 0, l.cartons_ordered)} inputMode="numeric" className="w-16 text-right border border-slate-300 rounded-md py-1 px-2 font-mono text-sm" />}
+        </Td>
+        <Td>
+          {b1Locked
+            ? <span className="font-mono text-xs text-slate-500">{fmtDate(d.e1)}</span>
+            : <input type="date" value={d.e1} onChange={(e) => setField(l.id, 'e1', e.target.value, l.cartons_ordered)} className={`border rounded-md py-1 px-2 font-mono text-xs ${(Number(d.q1) || 0) > 0 && !d.e1 ? 'border-amber-300' : 'border-slate-300'}`} />}
+        </Td>
+        <Td right>
+          <input value={d.q2} onChange={(e) => setField(l.id, 'q2', parseInt(e.target.value.replace(/\D/g, ''), 10) || 0, l.cartons_ordered)} inputMode="numeric" className={`w-16 text-right border rounded-md py-1 px-2 font-mono text-sm ${isFollowUp ? 'bg-amber-100 border-amber-300' : 'border-slate-300'}`} />
+        </Td>
+        <Td>
+          <input type="date" value={d.e2} onChange={(e) => setField(l.id, 'e2', e.target.value, l.cartons_ordered)} className={`border rounded-md py-1 px-2 font-mono text-xs ${isFollowUp ? 'bg-amber-100 border-amber-300' : ((Number(d.q2) || 0) > 0 && !d.e2 ? 'border-amber-300' : 'border-slate-300')}`} />
+        </Td>
+        <Td>
+          {lnSt === 'd' && <span className="text-xs text-emerald-600 font-medium">✓ {t('lnDelivered')}</span>}
+          {lnSt === 'p' && isFollowUp && <span className="text-xs text-amber-700 font-bold">⚠ {t('lnPartial')} · {t('remaining', { c: l.cartons_ordered - del2 })}</span>}
+          {lnSt === 'p' && !isFollowUp && <span className="text-xs text-indigo-600 font-medium">{t('lnPartial')} · {t('remaining', { c: l.cartons_ordered - del2 })}</span>}
+          {lnSt === 'o' && <span className="text-xs text-amber-600 font-medium">{t('lnOutstanding')}</span>}
+        </Td>
+      </tr>
+      {isFollowUp && (
+        <tr className="bg-amber-50 border-t border-amber-100">
+          <td colSpan={7} className="px-4 py-1.5 text-xs text-amber-700 font-medium">
+            {t('outstandingFollowUp', { c: l.cartons_ordered - persistedDelivered })}
+          </td>
+        </tr>
+      )}
+    </Fragment>
+  )
 }
