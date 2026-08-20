@@ -155,6 +155,8 @@ create table stock_report_lines (
   product_id        uuid not null references products(id),
   qty_on_hand       integer not null check (qty_on_hand >= 0),  -- single units
   nearest_expiry    date,
+  qty_on_hand_2     integer check (qty_on_hand_2 >= 0),         -- optional 2nd batch
+  nearest_expiry_2  date,
   unique (stock_report_id, product_id)
 );
 
@@ -580,7 +582,9 @@ $$;
 
 -- Outlet: submit (or replace) this month's stock report.
 -- p_lines: jsonb array of
--- {"product_id": uuid, "qty_on_hand": integer, "nearest_expiry": date|null}
+-- {"product_id": uuid, "qty_on_hand": integer, "nearest_expiry": date|null,
+--  "qty_on_hand_2": integer|null, "nearest_expiry_2": date|null}
+-- The 2nd qty/expiry pair is optional — NULL means that batch wasn't used.
 create or replace function submit_stock_report(p_lines jsonb)
 returns stock_reports
 language plpgsql security definer set search_path = public as $$
@@ -610,12 +614,16 @@ begin
 
   for v_line in select * from jsonb_array_elements(p_lines)
   loop
-    insert into stock_report_lines (stock_report_id, product_id, qty_on_hand, nearest_expiry)
+    insert into stock_report_lines (
+      stock_report_id, product_id, qty_on_hand, nearest_expiry, qty_on_hand_2, nearest_expiry_2
+    )
     values (
       v_report.id,
       (v_line->>'product_id')::uuid,
       (v_line->>'qty_on_hand')::integer,
-      nullif(v_line->>'nearest_expiry', '')::date
+      nullif(v_line->>'nearest_expiry', '')::date,
+      (v_line->>'qty_on_hand_2')::integer,
+      nullif(v_line->>'nearest_expiry_2', '')::date
     );
   end loop;
 

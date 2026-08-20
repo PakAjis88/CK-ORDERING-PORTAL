@@ -31,9 +31,12 @@ export default function StockTracker({ outlets }) {
   }
 
   const exportCsv = () => {
-    const head = ['Outlet', 'Month', 'Submitted', 'Product', 'Qty (units)', 'Nearest Expiry']
+    const head = ['Outlet', 'Month', 'Submitted', 'Product', 'Batch1 Qty', 'Batch1 Expiry', 'Batch2 Qty', 'Batch2 Expiry']
     const out = [head.join(',')]
-    submitted.forEach((s) => s.lines.forEach((l) => out.push([`"${s.outlet.name}"`, s.report_month, s.submitted_at.slice(0, 10), `"${l.product.name}"`, l.qty_on_hand, l.nearest_expiry || ''].join(','))))
+    submitted.forEach((s) => s.lines.forEach((l) => out.push([
+      `"${s.outlet.name}"`, s.report_month, s.submitted_at.slice(0, 10), `"${l.product.name}"`,
+      l.qty_on_hand, l.nearest_expiry || '', l.qty_on_hand_2 ?? '', l.nearest_expiry_2 || '',
+    ].join(','))))
     downloadCsv(out.join('\n'), `ck-stock-${month}.csv`)
   }
 
@@ -68,9 +71,12 @@ export default function StockTracker({ outlets }) {
                 {open === s.id && (
                   <div className="px-4 pb-3 space-y-1 border-t border-slate-100 pt-2">
                     {s.lines.map((l) => (
-                      <div key={l.product_id} className="flex justify-between text-xs">
+                      <div key={l.product_id} className="flex justify-between gap-3 text-xs">
                         <span className="text-slate-600">{l.product.name}</span>
-                        <span className="font-mono text-slate-500">{t('unitsExp', { qty: l.qty_on_hand, date: fmtDate(l.nearest_expiry) })}</span>
+                        <span className="font-mono text-slate-500 text-right">
+                          {t('unitsExp', { qty: l.qty_on_hand, date: fmtDate(l.nearest_expiry) })}
+                          {l.qty_on_hand_2 != null && <> · {t('unitsExp', { qty: l.qty_on_hand_2, date: fmtDate(l.nearest_expiry_2) })}</>}
+                        </span>
                       </div>
                     ))}
                   </div>
