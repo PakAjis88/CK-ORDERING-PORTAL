@@ -7,10 +7,16 @@ export function Tabs({ tabs, active, onChange }) {
       {tabs.map((tab) => (
         <button
           key={tab.id}
-          onClick={() => onChange(tab.id)}
-          className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px whitespace-nowrap transition ${active === tab.id ? 'border-teal-600 text-teal-700' : 'border-transparent text-slate-500 hover:text-slate-800'}`}
+          onClick={() => !tab.disabled && onChange(tab.id)}
+          disabled={tab.disabled}
+          className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px whitespace-nowrap transition flex items-center gap-1.5 ${
+            tab.disabled
+              ? 'border-transparent text-slate-300 cursor-not-allowed'
+              : active === tab.id ? 'border-teal-600 text-teal-700' : 'border-transparent text-slate-500 hover:text-slate-800'
+          }`}
         >
           {tab.label}
+          {tab.note && <span className="text-[10px] px-1.5 py-0.5 rounded border border-slate-200 bg-slate-50 text-slate-400 font-medium normal-case">{tab.note}</span>}
         </button>
       ))}
     </div>

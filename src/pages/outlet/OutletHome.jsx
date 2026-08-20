@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { useT } from '../../lib/i18n'
 import { listProducts } from '../../lib/api/products'
 import { listMyOrders, placeOrder, editOrder, cancelOrder } from '../../lib/api/orders'
+import { ORDERS_ENABLED } from '../../lib/featureFlags'
 import Header from '../../components/Header'
 import { Tabs } from '../../components/ui'
 import OrderForm from './OrderForm'
@@ -12,7 +13,7 @@ import StockReport from './StockReport'
 export default function OutletHome() {
   const { t } = useT()
   const now = new Date()
-  const [tab, setTab] = useState('order')
+  const [tab, setTab] = useState(ORDERS_ENABLED ? 'order' : 'stock')
   const [products, setProducts] = useState([])
   const [orders, setOrders] = useState([])
   const [loading, setLoading] = useState(true)
@@ -51,7 +52,11 @@ export default function OutletHome() {
       <main className="max-w-6xl mx-auto px-4 py-6">
         <Tabs
           active={tab} onChange={changeTab}
-          tabs={[{ id: 'order', label: t('tabNewOrder') }, { id: 'history', label: t('tabMyOrders') }, { id: 'stock', label: t('tabStock') }]}
+          tabs={[
+            { id: 'order', label: t('tabNewOrder'), disabled: !ORDERS_ENABLED, note: !ORDERS_ENABLED ? t('comingSoon') : undefined },
+            { id: 'history', label: t('tabMyOrders'), disabled: !ORDERS_ENABLED, note: !ORDERS_ENABLED ? t('comingSoon') : undefined },
+            { id: 'stock', label: t('tabStock') },
+          ]}
         />
         {tab === 'order' && (confirmed
           ? <Confirmation order={confirmed} onNew={() => setConfirmed(null)} />

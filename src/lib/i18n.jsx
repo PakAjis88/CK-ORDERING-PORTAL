@@ -10,7 +10,7 @@ const DICT = {
   en: {
     brandSub: 'MBG Outlet Network',
     outlet: 'Outlet', operator: 'Operator', signedInAs: 'Signed in as',
-    tabNewOrder: 'New order', tabMyOrders: 'My orders', tabStock: 'Stock report',
+    tabNewOrder: 'New order', tabMyOrders: 'My orders', tabStock: 'Stock report', comingSoon: 'Coming soon',
     perCarton: '{price}/carton · {n} {unit}', unitS: 'unit', unitP: 'units', cartonLabel: 'CARTON',
     orderSummary: 'Order summary',
     orderEmpty: 'Add cartons to any product to start. Values update as you go.',
@@ -66,7 +66,7 @@ const DICT = {
   ms: {
     brandSub: 'Rangkaian Outlet MBG',
     outlet: 'Outlet', operator: 'Operator', signedInAs: 'Log masuk sebagai',
-    tabNewOrder: 'Tempahan Baru', tabMyOrders: 'Tempahan Saya', tabStock: 'Laporan Stok',
+    tabNewOrder: 'Tempahan Baru', tabMyOrders: 'Tempahan Saya', tabStock: 'Laporan Stok', comingSoon: 'Akan datang',
     perCarton: '{price}/karton · {n} {unit}', unitS: 'unit', unitP: 'unit', cartonLabel: 'KARTON',
     orderSummary: 'Ringkasan Tempahan',
     orderEmpty: 'Tambah karton pada mana-mana produk untuk mula. Nilai dikemas kini secara automatik.',
