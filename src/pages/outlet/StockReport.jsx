@@ -81,7 +81,7 @@ export default function StockReport({ products }) {
           <tbody>
             {CAT_ORDER.flatMap((cat) => [
               <tr key={'h' + cat} className="bg-slate-50/70">
-                <td colSpan={6} className="px-4 py-2 text-xs font-semibold uppercase tracking-wide text-slate-500 border-t border-slate-100">{catName(cat)}</td>
+                <td colSpan={6} className="px-4 py-2 text-sm font-bold uppercase tracking-wide text-slate-500 border-t border-slate-100">{catName(cat)}</td>
               </tr>,
               ...products.filter((p) => p.category === cat).map((p) => (
                 <tr key={p.id} className="border-t border-slate-100">
