@@ -11,6 +11,12 @@ export async function setStockWindowOverride(enabled) {
   if (error) throw error
 }
 
+// Operator-only: clear an outlet's report for a month so they can submit again.
+export async function reopenStockReport(outletId, month) {
+  const { error } = await supabase.rpc('reopen_stock_report', { p_outlet_id: outletId, p_month: month })
+  if (error) throw error
+}
+
 export async function getMyStockReport(month) {
   const { data, error } = await supabase
     .from('stock_reports')

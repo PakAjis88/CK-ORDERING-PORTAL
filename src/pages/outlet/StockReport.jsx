@@ -38,7 +38,12 @@ export default function StockReport({ products }) {
 
   const setRow = (pid, field, v) => setRows((r) => ({ ...r, [pid]: { ...r[pid], [field]: v } }))
 
+  // Barang Kering & Kacang (category 1) must report a first expiry date; Funfruits (category 2) may leave it blank.
+  const expiryRequired = (p) => p.category === 1
+  const missingExpiry = products.filter((p) => expiryRequired(p) && rows[p.id]?.qty !== '' && !rows[p.id]?.expiry)
+
   const submit = async () => {
+    if (missingExpiry.length > 0) return
     const lines = products
       .filter((p) => rows[p.id].qty !== '' && Number(rows[p.id].qty) >= 0)
       .map((p) => ({
@@ -58,14 +63,16 @@ export default function StockReport({ products }) {
     }
   }
 
-  const editable = windowOpen === true
+  const locked = windowOpen === true && !!existing
+  const editable = windowOpen === true && !existing
 
   return (
     <div className="pb-24 lg:pb-0">
       <div className={`rounded-xl px-4 py-3 mb-4 text-sm border ${editable ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-amber-50 border-amber-200 text-amber-800'}`}>
-        {windowOpen === null ? '…' : editable ? t('windowOpen', { month: monthLabel(month) }) : t('windowClosed')}
+        {windowOpen === null ? '…' : locked ? t('reportLocked') : editable ? t('windowOpen', { month: monthLabel(month) }) : t('windowClosed')}
       </div>
       {existing && <div className="text-xs text-slate-500 mb-3">{t('alreadySubmitted', { date: fmtDate(existing.submitted_at?.slice(0, 10)) })}</div>}
+      {missingExpiry.length > 0 && <div className="text-xs text-red-600 mb-3">{t('expiryRequired')}</div>}
       <div className="bg-white border border-slate-200 rounded-xl overflow-x-auto">
         <table className="w-full text-sm min-w-[760px]">
           <thead className="bg-slate-50 text-slate-500 text-xs">
@@ -104,8 +111,12 @@ export default function StockReport({ products }) {
                     <input
                       type="date" disabled={!editable} value={rows[p.id]?.expiry ?? ''}
                       onChange={(e) => setRow(p.id, 'expiry', e.target.value)}
-                      className="border border-slate-300 rounded-md py-1.5 px-2 font-mono text-sm disabled:bg-slate-50 disabled:text-slate-400"
+                      className={`border rounded-md py-1.5 px-2 font-mono text-sm disabled:bg-slate-50 disabled:text-slate-400 ${
+                        expiryRequired(p) && rows[p.id]?.qty !== '' && !rows[p.id]?.expiry
+                          ? 'border-red-400 focus:outline-red-400' : 'border-slate-300'
+                      }`}
                     />
+                    {expiryRequired(p) && <span className="text-red-500 text-xs align-top ml-0.5">*</span>}
                   </Td>
                   <Td right>
                     <input
@@ -129,7 +140,7 @@ export default function StockReport({ products }) {
         </table>
         <div className="hidden lg:block p-3 border-t border-slate-200">
           <button
-            onClick={submit} disabled={!editable || saving}
+            onClick={submit} disabled={!editable || saving || missingExpiry.length > 0}
             className="bg-teal-600 hover:bg-teal-700 disabled:bg-slate-300 text-white text-sm font-medium px-5 py-2.5 rounded-lg transition"
           >
             {saving ? '…' : t('submitStock')}
@@ -140,7 +151,7 @@ export default function StockReport({ products }) {
       {/* Mobile: submit stays reachable without scrolling past the whole table */}
       <div className="lg:hidden fixed bottom-0 inset-x-0 z-30 bg-white border-t border-slate-200 px-4 py-3 shadow-[0_-2px_8px_rgba(0,0,0,0.06)]">
         <button
-          onClick={submit} disabled={!editable || saving}
+          onClick={submit} disabled={!editable || saving || missingExpiry.length > 0}
           className="w-full max-w-6xl mx-auto block bg-teal-600 hover:bg-teal-700 disabled:bg-slate-300 text-white font-medium py-2.5 rounded-lg transition"
         >
           {saving ? '…' : t('submitStock')}

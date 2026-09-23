@@ -558,7 +558,7 @@ $$;
 create or replace function is_stock_window_open()
 returns boolean
 language sql stable security definer set search_path = public as $$
-  select (extract(day from current_date) = 20)
+  select (extract(day from current_date) between 20 and 30)
     or coalesce(
          (select (value->>'enabled')::boolean from app_settings where key = 'stock_window_override'),
          false
@@ -603,6 +603,9 @@ begin
   if p_lines is null or jsonb_array_length(p_lines) = 0 then
     raise exception 'Stock report must have at least one line';
   end if;
+  if exists (select 1 from stock_reports where outlet_id = v_outlet_id and report_month = v_month) then
+    raise exception 'Stock report already submitted for this month — ask your operator to reopen it';
+  end if;
 
   insert into stock_reports (outlet_id, report_month, submitted_by)
   values (v_outlet_id, v_month, auth.uid())
@@ -631,6 +634,20 @@ begin
 end;
 $$;
 
+-- Operator-only: clear an outlet's stock report for a month so they can submit again.
+-- Once a report is submitted, submit_stock_report() blocks resubmission for that
+-- outlet/month — this is the only way to unlock it (brief: "reopen once instructed").
+create or replace function reopen_stock_report(p_outlet_id uuid, p_month char(7))
+returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  if not is_operator() then
+    raise exception 'Operator only';
+  end if;
+  delete from stock_reports where outlet_id = p_outlet_id and report_month = p_month;
+end;
+$$;
+
 grant execute on function place_order(jsonb, boolean) to authenticated;
 grant execute on function edit_order(uuid, jsonb) to authenticated;
 grant execute on function cancel_order(uuid) to authenticated;
@@ -638,6 +655,7 @@ grant execute on function record_delivery(uuid, jsonb) to authenticated;
 grant execute on function is_stock_window_open() to authenticated;
 grant execute on function set_stock_window_override(boolean) to authenticated;
 grant execute on function submit_stock_report(jsonb) to authenticated;
+grant execute on function reopen_stock_report(uuid, char) to authenticated;
 
 -- ============================================================================
 -- Product photos — operator upload/delete (see supabase/product_photos_setup.sql

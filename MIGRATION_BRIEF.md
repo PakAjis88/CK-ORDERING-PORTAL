@@ -113,8 +113,9 @@ seed list of location names is in `ck-portal.jsx`.
 - Each outlet reports once a month: **quantity on hand in single units** plus
   **one nearest-expiry date per product** (encourages FIFO — outlets report the
   soonest-to-expire batch, not every batch).
-- The reporting form is **only open on the 20th of each month**. Outside that
-  day it's locked, with a "preview/testing" override toggle for admin/QA use —
+- The reporting form is **only open from the 20th through the 30th of each
+  month**. Outside that window it's locked, with a "preview/testing" override
+  toggle for admin/QA use —
   this override should probably become an actual admin-only setting in
   production rather than a public checkbox.
 - Re-submitting in the same month **replaces** the existing submission for that
@@ -216,7 +217,7 @@ Seven tables, designed so old orders are immune to later catalogue/price changes
 3. "Print all today's orders" batch PDF — build now or later?
 4. RLS (row-level security) policy design in Supabase: outlets should only
    read/write their own orders and stock reports; operators/admins see everything.
-5. Whether the 20th-only stock window should have an actual admin-configurable
+5. Whether the 20th-30th stock window should have an actual admin-configurable
    override (vs. the prototype's public "preview" checkbox).
 
 ## 10. What NOT to change without asking
@@ -225,4 +226,4 @@ The business rules in section 6 were reached through several rounds of
 back-and-forth with the person and were each explicitly confirmed. Treat them
 as settled requirements, not suggestions — especially the 30-day rolling cycle
 (not calendar month), the 3-day edit window, reorder-as-separate-order, and the
-20th-only stock window.
+20th-30th stock window.

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useT } from '../../lib/i18n'
 import { monthKey, monthLabel, fmtDate, todayISO } from '../../lib/format'
-import { listStockReports, isStockWindowOpen, setStockWindowOverride } from '../../lib/api/stock'
+import { listStockReports, isStockWindowOpen, setStockWindowOverride, reopenStockReport } from '../../lib/api/stock'
 import { downloadCsv } from '../../lib/csv'
 import { Select, Stat, Empty } from '../../components/ui'
 
@@ -12,6 +12,8 @@ export default function StockTracker({ outlets }) {
   const [open, setOpen] = useState(null)
   const [windowOpen, setWindowOpen] = useState(null)
   const [toggling, setToggling] = useState(false)
+  const [reopening, setReopening] = useState(null)
+  const [reopenTarget, setReopenTarget] = useState(null)
 
   const months = useMemo(() => { const s = new Set(submitted.map((x) => x.report_month)); s.add(monthKey(todayISO())); return [...s].sort().reverse() }, [submitted])
 
@@ -28,6 +30,14 @@ export default function StockTracker({ outlets }) {
     setToggling(true)
     try { await setStockWindowOverride(!windowOpen); setWindowOpen(await isStockWindowOpen()) }
     finally { setToggling(false) }
+  }
+
+  const confirmReopen = async () => {
+    const s = reopenTarget
+    setReopenTarget(null)
+    setReopening(s.id)
+    try { await reopenStockReport(s.outlet_id, s.report_month); refresh() }
+    finally { setReopening(null) }
   }
 
   const exportCsv = () => {
@@ -79,6 +89,12 @@ export default function StockTracker({ outlets }) {
                         </span>
                       </div>
                     ))}
+                    <button
+                      onClick={() => setReopenTarget(s)} disabled={reopening === s.id}
+                      className="mt-2 text-xs text-amber-700 border border-amber-300 hover:bg-amber-50 disabled:opacity-50 px-2.5 py-1 rounded-md font-medium"
+                    >
+                      {reopening === s.id ? '…' : t('reopenReport')}
+                    </button>
                   </div>
                 )}
               </div>
@@ -99,6 +115,19 @@ export default function StockTracker({ outlets }) {
           </div>
         </div>
       </div>
+
+      {reopenTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50">
+          <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-5">
+            <h3 className="font-semibold mb-2">{t('reopenReport')}</h3>
+            <p className="text-sm text-slate-600 mb-4">{t('reopenConfirm', { outlet: reopenTarget.outlet.name })}</p>
+            <div className="flex gap-2">
+              <button onClick={() => setReopenTarget(null)} className="flex-1 border border-slate-300 hover:bg-slate-50 text-slate-700 text-sm font-medium py-2.5 rounded-lg">{t('reopenCancel')}</button>
+              <button onClick={confirmReopen} className="flex-1 bg-amber-600 hover:bg-amber-700 text-white text-sm font-medium py-2.5 rounded-lg">{t('reopenYes')}</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
