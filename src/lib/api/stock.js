@@ -41,6 +41,22 @@ export async function submitStockReport(lines) {
   if (error) throw error
 }
 
+// Operator-only: submit a stock report on an outlet's behalf, bypassing the reporting window.
+export async function submitStockReportForOutlet(outletId, month, lines) {
+  const { error } = await supabase.rpc('submit_stock_report_for_outlet', {
+    p_outlet_id: outletId,
+    p_month: month,
+    p_lines: lines.map((l) => ({
+      product_id: l.productId,
+      qty_on_hand: l.qtyOnHand,
+      nearest_expiry: l.nearestExpiry || null,
+      qty_on_hand_2: l.qtyOnHand2 ?? null,
+      nearest_expiry_2: l.nearestExpiry2 || null,
+    })),
+  })
+  if (error) throw error
+}
+
 // Operator: all reports for a given month, across outlets.
 export async function listStockReports(month) {
   const { data, error } = await supabase

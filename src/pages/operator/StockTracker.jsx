@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useT } from '../../lib/i18n'
 import { monthKey, monthLabel, fmtDate, todayISO } from '../../lib/format'
-import { listStockReports, isStockWindowOpen, setStockWindowOverride, reopenStockReport } from '../../lib/api/stock'
+import { listStockReports, isStockWindowOpen, setStockWindowOverride, reopenStockReport, submitStockReportForOutlet } from '../../lib/api/stock'
 import { downloadCsv } from '../../lib/csv'
 import { Select, Stat, Empty } from '../../components/ui'
+import StockReportForm from '../../components/StockReportForm'
 
-export default function StockTracker({ outlets }) {
+export default function StockTracker({ outlets, products }) {
   const { t } = useT()
   const [month, setMonth] = useState(monthKey(todayISO()))
   const [submitted, setSubmitted] = useState([])
@@ -14,6 +15,9 @@ export default function StockTracker({ outlets }) {
   const [toggling, setToggling] = useState(false)
   const [reopening, setReopening] = useState(null)
   const [reopenTarget, setReopenTarget] = useState(null)
+  const [entryTarget, setEntryTarget] = useState(null)
+  const [entryRows, setEntryRows] = useState({})
+  const [submitting, setSubmitting] = useState(false)
 
   const months = useMemo(() => { const s = new Set(submitted.map((x) => x.report_month)); s.add(monthKey(todayISO())); return [...s].sort().reverse() }, [submitted])
 
@@ -38,6 +42,17 @@ export default function StockTracker({ outlets }) {
     setReopening(s.id)
     try { await reopenStockReport(s.outlet_id, s.report_month); refresh() }
     finally { setReopening(null) }
+  }
+
+  const openEntry = (outlet) => {
+    setEntryRows(Object.fromEntries(products.map((p) => [p.id, { qty: '', expiry: '', qty2: '', expiry2: '' }])))
+    setEntryTarget(outlet)
+  }
+  const setEntryRow = (pid, field, v) => setEntryRows((r) => ({ ...r, [pid]: { ...r[pid], [field]: v } }))
+  const submitEntry = async (lines) => {
+    setSubmitting(true)
+    try { await submitStockReportForOutlet(entryTarget.id, month, lines); setEntryTarget(null); refresh() }
+    finally { setSubmitting(false) }
   }
 
   const exportCsv = () => {
@@ -107,10 +122,13 @@ export default function StockTracker({ outlets }) {
             {outstanding.length === 0
               ? <p className="text-sm text-emerald-700 p-3">{t('allReported')}</p>
               : outstanding.map((o) => (
-                <div key={o.id} className="flex items-center justify-between px-3 py-2 text-sm border-b border-slate-50 last:border-0">
+                <button
+                  key={o.id} onClick={() => openEntry(o)}
+                  className="w-full flex items-center justify-between px-3 py-2 text-sm border-b border-slate-50 last:border-0 hover:bg-slate-50 text-left"
+                >
                   <span>{o.name}</span>
                   <span className="text-xs font-mono text-amber-600">{t('outstanding')}</span>
-                </div>
+                </button>
               ))}
           </div>
         </div>
@@ -124,6 +142,25 @@ export default function StockTracker({ outlets }) {
             <div className="flex gap-2">
               <button onClick={() => setReopenTarget(null)} className="flex-1 border border-slate-300 hover:bg-slate-50 text-slate-700 text-sm font-medium py-2.5 rounded-lg">{t('reopenCancel')}</button>
               <button onClick={confirmReopen} className="flex-1 bg-amber-600 hover:bg-amber-700 text-white text-sm font-medium py-2.5 rounded-lg">{t('reopenYes')}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {entryTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50">
+          <div className="bg-white rounded-2xl shadow-xl max-w-4xl w-full max-h-[90vh] flex flex-col">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+              <h3 className="font-semibold">{t('manualEntryTitle', { outlet: entryTarget.name })}</h3>
+              <button onClick={() => setEntryTarget(null)} className="text-sm text-slate-500 hover:text-slate-800 border border-slate-300 hover:bg-slate-50 px-3 py-1.5 rounded-lg font-medium">{t('cancel')}</button>
+            </div>
+            <div className="p-5 overflow-y-auto">
+              <StockReportForm
+                products={products} rows={entryRows} setRow={setEntryRow}
+                editable saving={submitting} onSubmit={submitEntry}
+                submitLabel={t('manualEntrySubmit', { outlet: entryTarget.name })}
+                fixedMobileBar={false}
+              />
             </div>
           </div>
         </div>

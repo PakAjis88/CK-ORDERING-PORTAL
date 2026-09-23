@@ -66,6 +66,7 @@ const DICT = {
     overrideToggleOn: 'Force stock window open', overrideToggleOff: 'Stop forcing it open',
     reopenReport: 'Reopen for resubmission', reopenConfirm: 'Reopen {outlet}\'s stock report for this month? They will be able to submit again, replacing this data.',
     reopenYes: 'Yes, reopen it', reopenCancel: 'Cancel',
+    manualEntry: 'Fill stock report', manualEntryTitle: 'Stock report for {outlet}', manualEntrySubmit: 'Submit for {outlet}', cancel: 'Cancel',
   },
   ms: {
     brandSub: 'Rangkaian Outlet MBG',
@@ -126,6 +127,7 @@ const DICT = {
     overrideToggleOn: 'Paksa buka tetingkap stok', overrideToggleOff: 'Henti paksa buka',
     reopenReport: 'Buka semula untuk hantar semula', reopenConfirm: 'Buka semula laporan stok {outlet} untuk bulan ini? Mereka boleh hantar semula, menggantikan data ini.',
     reopenYes: 'Ya, buka semula', reopenCancel: 'Batal',
+    manualEntry: 'Isi laporan stok', manualEntryTitle: 'Laporan stok untuk {outlet}', manualEntrySubmit: 'Hantar bagi {outlet}', cancel: 'Batal',
   },
 }
 
