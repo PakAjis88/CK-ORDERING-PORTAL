@@ -1,10 +1,12 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useT } from '../../lib/i18n'
+import { useAuth } from '../../lib/AuthContext'
 import { listProducts } from '../../lib/api/products'
 import { listMyOrders, placeOrder, editOrder, cancelOrder } from '../../lib/api/orders'
 import { ORDERS_ENABLED } from '../../lib/featureFlags'
 import Header from '../../components/Header'
 import { Tabs } from '../../components/ui'
+import SecuritySetupBanner from '../../components/SecuritySetupBanner'
 import OrderForm from './OrderForm'
 import Confirmation from './Confirmation'
 import MyOrders from './MyOrders'
@@ -12,6 +14,7 @@ import StockReport from './StockReport'
 
 export default function OutletHome() {
   const { t } = useT()
+  const { profile } = useAuth()
   const now = new Date()
   const [tab, setTab] = useState(ORDERS_ENABLED ? 'order' : 'stock')
   const [products, setProducts] = useState([])
@@ -50,6 +53,7 @@ export default function OutletHome() {
     <div className="min-h-screen bg-slate-100 text-slate-800">
       <Header />
       <main className="max-w-6xl mx-auto px-4 py-6">
+        {!profile.security_question && <SecuritySetupBanner />}
         <Tabs
           active={tab} onChange={changeTab}
           tabs={[
