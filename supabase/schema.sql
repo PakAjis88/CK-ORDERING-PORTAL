@@ -52,6 +52,7 @@ create table products (
   units_per_carton   integer not null check (units_per_carton > 0),
   active             boolean not null default true,
   photo_url          text,
+  display_order      smallint,                 -- category-grouped display order across the app
   created_at         timestamptz not null default now()
 );
 
