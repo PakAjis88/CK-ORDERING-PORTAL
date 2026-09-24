@@ -1,5 +1,6 @@
 import { useT, CAT_ORDER } from '../lib/i18n'
 import { Th, Td, Thumb } from './ui'
+import ExpiryDateInput, { isValidExpiry, MAX_YEAR } from './ExpiryDateInput'
 
 // Barang Kering & Kacang (category 1) must report a first expiry date; Funfruits (category 2) may leave it blank.
 const expiryRequired = (p) => p.category === 1
@@ -8,9 +9,10 @@ export default function StockReportForm({ products, rows, setRow, editable, savi
   const { t, catName } = useT()
 
   const missingExpiry = products.filter((p) => expiryRequired(p) && rows[p.id]?.qty !== '' && !rows[p.id]?.expiry)
+  const badExpiry = products.filter((p) => !isValidExpiry(rows[p.id]?.expiry) || !isValidExpiry(rows[p.id]?.expiry2))
 
   const handleSubmit = () => {
-    if (missingExpiry.length > 0) return
+    if (missingExpiry.length > 0 || badExpiry.length > 0) return
     const lines = products
       .filter((p) => rows[p.id].qty !== '' && Number(rows[p.id].qty) >= 0)
       .map((p) => ({
@@ -24,11 +26,12 @@ export default function StockReportForm({ products, rows, setRow, editable, savi
     onSubmit(lines)
   }
 
-  const disabled = !editable || saving || missingExpiry.length > 0
+  const disabled = !editable || saving || missingExpiry.length > 0 || badExpiry.length > 0
 
   return (
     <div className={fixedMobileBar ? 'pb-24 lg:pb-0' : ''}>
       {missingExpiry.length > 0 && <div className="text-xs text-red-600 mb-3">{t('expiryRequired')}</div>}
+      {badExpiry.length > 0 && <div className="text-xs text-red-600 mb-3">{t('expiryInvalid', { year: MAX_YEAR })}</div>}
       <div className="bg-white border border-slate-200 rounded-xl overflow-x-auto">
         <table className="w-full text-sm min-w-[760px]">
           <thead className="bg-slate-50 text-slate-500 text-xs">
@@ -64,13 +67,10 @@ export default function StockReportForm({ products, rows, setRow, editable, savi
                     />
                   </Td>
                   <Td>
-                    <input
-                      type="date" disabled={!editable} value={rows[p.id]?.expiry ?? ''}
-                      onChange={(e) => setRow(p.id, 'expiry', e.target.value)}
-                      className={`border rounded-md py-1.5 px-2 font-mono text-sm disabled:bg-slate-50 disabled:text-slate-400 ${
-                        expiryRequired(p) && rows[p.id]?.qty !== '' && !rows[p.id]?.expiry
-                          ? 'border-red-400 focus:outline-red-400' : 'border-slate-300'
-                      }`}
+                    <ExpiryDateInput
+                      disabled={!editable} value={rows[p.id]?.expiry ?? ''}
+                      onChange={(v) => setRow(p.id, 'expiry', v)}
+                      highlight={expiryRequired(p) && rows[p.id]?.qty !== '' && !rows[p.id]?.expiry}
                     />
                     {expiryRequired(p) && <span className="text-red-500 text-xs align-top ml-0.5">*</span>}
                   </Td>
@@ -83,10 +83,9 @@ export default function StockReportForm({ products, rows, setRow, editable, savi
                     />
                   </Td>
                   <Td>
-                    <input
-                      type="date" disabled={!editable} value={rows[p.id]?.expiry2 ?? ''}
-                      onChange={(e) => setRow(p.id, 'expiry2', e.target.value)}
-                      className="border border-slate-300 rounded-md py-1.5 px-2 font-mono text-sm disabled:bg-slate-50 disabled:text-slate-400"
+                    <ExpiryDateInput
+                      disabled={!editable} value={rows[p.id]?.expiry2 ?? ''}
+                      onChange={(v) => setRow(p.id, 'expiry2', v)}
                     />
                   </Td>
                 </tr>
