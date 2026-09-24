@@ -1,0 +1,23 @@
+-- ============================================================================
+-- Close the missing access control on next_order_no()
+-- Paste into the Supabase SQL Editor and run once. Safe to re-run.
+--
+-- next_order_no() is an internal helper only meant to be called from inside
+-- place_order() — but unlike every other RPC in this schema, it was never
+-- granted (or revoked from PUBLIC), so Postgres' default PUBLIC execute
+-- grant left it callable by anyone, including a fully anonymous caller with
+-- just the public anon key. Confirmed live: an unauthenticated request could
+-- call it directly and increment the shared CK-YYMM-### counter at will.
+--
+-- Revoking blocks direct client calls (via PostgREST, which connects as the
+-- anon/authenticated roles) without affecting place_order()'s internal call
+-- to it — a SECURITY DEFINER function's body runs as its owner, who always
+-- retains privileges on their own objects regardless of what's revoked from
+-- other roles.
+--
+-- Note: revoking from PUBLIC alone isn't enough on Supabase — new functions
+-- get an explicit execute grant to anon/authenticated directly (separate
+-- from the PUBLIC pseudo-role), so all three must be revoked explicitly.
+-- ============================================================================
+
+revoke execute on function next_order_no(date) from public, anon, authenticated;

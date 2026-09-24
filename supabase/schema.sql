@@ -274,6 +274,11 @@ create policy "user reads own profile" on user_profiles for select
 -- ============================================================================
 
 -- Atomically reserve the next CK-YYMM-### number for a given order date.
+-- Internal helper, only ever called from place_order() below — not a
+-- client-facing RPC, so PUBLIC's default execute grant must be revoked
+-- (every other function here is either explicitly granted to `authenticated`
+-- or does its own auth.uid() check; this one has neither on its own, so the
+-- revoke is what keeps it from being callable directly, including anonymously).
 create or replace function next_order_no(p_order_date date)
 returns text
 language plpgsql security definer set search_path = public as $$
@@ -288,6 +293,11 @@ begin
   return 'CK-' || v_month_key || '-' || lpad(v_seq::text, 3, '0');
 end;
 $$;
+
+-- Supabase grants execute to anon/authenticated directly on function
+-- creation (separate from the PUBLIC pseudo-role) — all three must be
+-- revoked explicitly, or anon/authenticated keep their own grant regardless.
+revoke execute on function next_order_no(date) from public, anon, authenticated;
 
 -- Place a new order (or a reorder) for the caller's own outlet.
 -- p_lines: jsonb array of {"product_id": uuid, "cartons": integer}
