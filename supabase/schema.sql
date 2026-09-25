@@ -570,10 +570,14 @@ $$;
 
 -- Is the monthly stock report window open right now? Public to any
 -- authenticated user so the frontend can render the banner state.
+-- Open from the 20th through the actual last day of the month, whatever
+-- that is (28/29/30/31) — date arithmetic instead of a hardcoded upper
+-- bound like `between 20 and 30`, which wrongly excluded the 31st in
+-- every 31-day month.
 create or replace function is_stock_window_open()
 returns boolean
 language sql stable security definer set search_path = public as $$
-  select (extract(day from current_date) between 20 and 30)
+  select (current_date >= date_trunc('month', current_date)::date + 19)
     or coalesce(
          (select (value->>'enabled')::boolean from app_settings where key = 'stock_window_override'),
          false
