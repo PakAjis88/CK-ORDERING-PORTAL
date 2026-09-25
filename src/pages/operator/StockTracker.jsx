@@ -55,12 +55,24 @@ export default function StockTracker({ outlets, products }) {
     finally { setSubmitting(false) }
   }
 
+  // A zero-quantity batch with no recorded expiry gets remarked with the
+  // report's own submission date instead of being left blank — there's
+  // nothing to give a "nearest expiry" for when there's no stock at all.
+  const lineText = (qty, expiry, submittedAt) =>
+    !expiry && qty === 0
+      ? t('unitsOutOfStock', { qty, date: fmtDate(submittedAt.slice(0, 10)) })
+      : t('unitsExp', { qty, date: fmtDate(expiry) })
+
+  const csvExpiry = (qty, expiry, submittedAt) =>
+    !expiry && qty === 0 ? t('outOfStockRemark', { date: fmtDate(submittedAt.slice(0, 10)) }) : (expiry || '')
+
   const exportCsv = () => {
     const head = ['Outlet', 'Month', 'Submitted', 'Product', 'Batch1 Qty', 'Batch1 Expiry', 'Batch2 Qty', 'Batch2 Expiry']
     const out = [head.join(',')]
     submitted.forEach((s) => s.lines.forEach((l) => out.push([
       `"${s.outlet.name}"`, s.report_month, s.submitted_at.slice(0, 10), `"${l.product.name}"`,
-      l.qty_on_hand, l.nearest_expiry || '', l.qty_on_hand_2 ?? '', l.nearest_expiry_2 || '',
+      l.qty_on_hand, `"${csvExpiry(l.qty_on_hand, l.nearest_expiry, s.submitted_at)}"`,
+      l.qty_on_hand_2 ?? '', `"${csvExpiry(l.qty_on_hand_2, l.nearest_expiry_2, s.submitted_at)}"`,
     ].join(','))))
     downloadCsv(out.join('\n'), `ck-stock-${month}.csv`)
   }
@@ -99,8 +111,8 @@ export default function StockTracker({ outlets, products }) {
                       <div key={l.product_id} className="flex justify-between gap-3 text-xs">
                         <span className="text-slate-600">{l.product.name}</span>
                         <span className="font-mono text-slate-500 text-right">
-                          {t('unitsExp', { qty: l.qty_on_hand, date: fmtDate(l.nearest_expiry) })}
-                          {l.qty_on_hand_2 != null && <> · {t('unitsExp', { qty: l.qty_on_hand_2, date: fmtDate(l.nearest_expiry_2) })}</>}
+                          {lineText(l.qty_on_hand, l.nearest_expiry, s.submitted_at)}
+                          {l.qty_on_hand_2 != null && <> · {lineText(l.qty_on_hand_2, l.nearest_expiry_2, s.submitted_at)}</>}
                         </span>
                       </div>
                     ))}

@@ -2,13 +2,16 @@ import { useT, CAT_ORDER } from '../lib/i18n'
 import { Th, Td, Thumb } from './ui'
 import ExpiryDateInput, { isValidExpiry, MAX_YEAR } from './ExpiryDateInput'
 
-// Barang Kering & Kacang (category 1) must report a first expiry date; Funfruits (category 2) may leave it blank.
+// Barang Kering & Kacang (category 1) must report a first expiry date when
+// there's actual stock; Funfruits (category 2) may always leave it blank,
+// and a zero (out-of-stock) quantity never requires one either way.
 const expiryRequired = (p) => p.category === 1
+const hasStock = (r) => r?.qty !== '' && Number(r.qty) > 0
 
 export default function StockReportForm({ products, rows, setRow, editable, saving, onSubmit, submitLabel, fixedMobileBar = true }) {
   const { t, catName } = useT()
 
-  const missingExpiry = products.filter((p) => expiryRequired(p) && rows[p.id]?.qty !== '' && !rows[p.id]?.expiry)
+  const missingExpiry = products.filter((p) => expiryRequired(p) && hasStock(rows[p.id]) && !rows[p.id]?.expiry)
   const badExpiry = products.filter((p) => !isValidExpiry(rows[p.id]?.expiry) || !isValidExpiry(rows[p.id]?.expiry2))
 
   const handleSubmit = () => {
@@ -70,7 +73,7 @@ export default function StockReportForm({ products, rows, setRow, editable, savi
                     <ExpiryDateInput
                       disabled={!editable} value={rows[p.id]?.expiry ?? ''}
                       onChange={(v) => setRow(p.id, 'expiry', v)}
-                      highlight={expiryRequired(p) && rows[p.id]?.qty !== '' && !rows[p.id]?.expiry}
+                      highlight={expiryRequired(p) && hasStock(rows[p.id]) && !rows[p.id]?.expiry}
                     />
                     {expiryRequired(p) && <span className="text-red-500 text-xs align-top ml-0.5">*</span>}
                   </Td>
