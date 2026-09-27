@@ -171,7 +171,7 @@ create table stock_report_lines (
 -- ---------------------------------------------------------------------------
 create table user_profiles (
   id                     uuid primary key references auth.users(id) on delete cascade,
-  role                   text not null check (role in ('outlet', 'operator', 'admin')),
+  role                   text not null check (role in ('outlet', 'operator', 'admin', 'halal')),
   outlet_id              uuid references outlets(id),   -- required when role = 'outlet'
   full_name              text,
   security_question      text,           -- self-service password recovery (no outbound email configured)
@@ -229,7 +229,7 @@ returns boolean
 language sql stable security definer set search_path = public as $$
   select exists (
     select 1 from user_profiles
-    where id = auth.uid() and role in ('operator', 'admin')
+    where id = auth.uid() and role in ('operator', 'admin', 'halal')
   );
 $$;
 
@@ -957,3 +957,209 @@ end;
 $$;
 
 grant execute on function upsert_product(uuid, text, text, smallint, numeric, integer) to authenticated;
+
+-- ============================================================================
+-- Halal Management System (HMS) — daily production/traceability records.
+-- New `halal` role (see is_operator() above) lands on the HMS tab first
+-- (frontend-only logic) but is otherwise a full operator.
+-- ============================================================================
+
+-- One row per document (HM9-F4b..f). products/materials empty arrays mean
+-- "open-ended, typed in each time" (Seasonal & R&D only). qa_label is the
+-- second sensory sign-off column's label ("LD/QA" normally, "R&D" for
+-- Seasonal & R&D).
+create table hms_forms (
+  id             uuid primary key default gen_random_uuid(),
+  code           text unique not null,
+  name           text not null,
+  version        text,
+  display_order  smallint not null default 0,
+  active         boolean not null default true,
+  products       jsonb not null default '[]'::jsonb,
+  materials      jsonb not null default '[]'::jsonb,
+  qa_label       text not null default 'LD/QA',
+  created_at     timestamptz not null default now()
+);
+
+-- One row per form per work_date. status 'nil' = "no production today"
+-- (explicit, so it never looks the same as "forgot"). submitted_at defaults
+-- to now() and is only ever set by submit_hms_form()/mark_hms_nil(), never
+-- client-supplied — this is what on-time/late is measured against.
+create table hms_submissions (
+  id                   uuid primary key default gen_random_uuid(),
+  form_id              uuid not null references hms_forms(id),
+  work_date            date not null,
+  status               text not null check (status in ('submitted', 'nil')),
+  production_date      date,
+  product_weight       text,
+  products             jsonb,
+  materials            jsonb,
+  sensory              jsonb,
+  packing_date         date,
+  product_expiry_date  date,
+  total_pcs            integer,
+  total_ctn            integer,
+  prepared_by          text,
+  checked_by           text,
+  submitted_at         timestamptz not null default now(),
+  submitted_by         uuid references auth.users(id),
+  updated_at           timestamptz not null default now(),
+  unique (form_id, work_date)
+);
+
+create index idx_hms_submissions_date on hms_submissions(work_date);
+
+-- Operator-maintained; a working day that falls here is never counted as missed.
+create table hms_holidays (
+  date  date primary key,
+  name  text
+);
+
+alter table hms_forms enable row level security;
+alter table hms_submissions enable row level security;
+alter table hms_holidays enable row level security;
+
+create policy "hms_forms operator read" on hms_forms for select using (is_operator());
+create policy "hms_submissions operator read" on hms_submissions for select using (is_operator());
+create policy "hms_holidays operator read" on hms_holidays for select using (is_operator());
+
+create or replace function submit_hms_form(p_form_id uuid, p_work_date date, p_payload jsonb)
+returns hms_submissions
+language plpgsql security definer set search_path = public as $$
+declare
+  v_submission hms_submissions;
+begin
+  if not is_operator() then
+    raise exception 'Operator only';
+  end if;
+  if exists (select 1 from hms_submissions where form_id = p_form_id and work_date = p_work_date) then
+    raise exception 'A record already exists for this form and date — reopen it first';
+  end if;
+
+  insert into hms_submissions (
+    form_id, work_date, status, production_date, product_weight, products, materials,
+    sensory, packing_date, product_expiry_date, total_pcs, total_ctn, prepared_by, checked_by,
+    submitted_by
+  ) values (
+    p_form_id, p_work_date, 'submitted',
+    nullif(p_payload->>'production_date', '')::date,
+    p_payload->>'product_weight',
+    coalesce(p_payload->'products', '[]'::jsonb),
+    coalesce(p_payload->'materials', '[]'::jsonb),
+    p_payload->'sensory',
+    nullif(p_payload->>'packing_date', '')::date,
+    nullif(p_payload->>'product_expiry_date', '')::date,
+    nullif(p_payload->>'total_pcs', '')::integer,
+    nullif(p_payload->>'total_ctn', '')::integer,
+    p_payload->>'prepared_by',
+    p_payload->>'checked_by',
+    auth.uid()
+  )
+  returning * into v_submission;
+
+  return v_submission;
+end;
+$$;
+
+create or replace function mark_hms_nil(p_form_id uuid, p_work_date date)
+returns hms_submissions
+language plpgsql security definer set search_path = public as $$
+declare
+  v_submission hms_submissions;
+begin
+  if not is_operator() then
+    raise exception 'Operator only';
+  end if;
+  if exists (select 1 from hms_submissions where form_id = p_form_id and work_date = p_work_date) then
+    raise exception 'A record already exists for this form and date — reopen it first';
+  end if;
+
+  insert into hms_submissions (form_id, work_date, status, submitted_by)
+  values (p_form_id, p_work_date, 'nil', auth.uid())
+  returning * into v_submission;
+
+  return v_submission;
+end;
+$$;
+
+-- Corrects an already-submitted record's content without touching
+-- submitted_at, so fixing a typo can't retroactively change on-time/late.
+create or replace function update_hms_submission(p_id uuid, p_payload jsonb)
+returns hms_submissions
+language plpgsql security definer set search_path = public as $$
+declare
+  v_submission hms_submissions;
+begin
+  if not is_operator() then
+    raise exception 'Operator only';
+  end if;
+
+  update hms_submissions set
+    production_date = nullif(p_payload->>'production_date', '')::date,
+    product_weight = p_payload->>'product_weight',
+    products = coalesce(p_payload->'products', products),
+    materials = coalesce(p_payload->'materials', materials),
+    sensory = coalesce(p_payload->'sensory', sensory),
+    packing_date = nullif(p_payload->>'packing_date', '')::date,
+    product_expiry_date = nullif(p_payload->>'product_expiry_date', '')::date,
+    total_pcs = nullif(p_payload->>'total_pcs', '')::integer,
+    total_ctn = nullif(p_payload->>'total_ctn', '')::integer,
+    prepared_by = p_payload->>'prepared_by',
+    checked_by = p_payload->>'checked_by',
+    updated_at = now()
+  where id = p_id
+  returning * into v_submission;
+
+  if not found then
+    raise exception 'Submission not found';
+  end if;
+
+  return v_submission;
+end;
+$$;
+
+-- Deletes a submission so the day can be redone — mirrors reopen_stock_report.
+-- This does reset the on-time/late record for that day; use sparingly.
+create or replace function reopen_hms_submission(p_id uuid)
+returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  if not is_operator() then
+    raise exception 'Operator only';
+  end if;
+  delete from hms_submissions where id = p_id;
+end;
+$$;
+
+create or replace function upsert_hms_holiday(p_date date, p_name text)
+returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  if not is_operator() then
+    raise exception 'Operator only';
+  end if;
+  insert into hms_holidays (date, name) values (p_date, p_name)
+  on conflict (date) do update set name = excluded.name;
+end;
+$$;
+
+create or replace function delete_hms_holiday(p_date date)
+returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  if not is_operator() then
+    raise exception 'Operator only';
+  end if;
+  delete from hms_holidays where date = p_date;
+end;
+$$;
+
+grant execute on function submit_hms_form(uuid, date, jsonb) to authenticated;
+grant execute on function mark_hms_nil(uuid, date) to authenticated;
+grant execute on function update_hms_submission(uuid, jsonb) to authenticated;
+grant execute on function reopen_hms_submission(uuid) to authenticated;
+grant execute on function upsert_hms_holiday(date, text) to authenticated;
+grant execute on function delete_hms_holiday(date) to authenticated;
+
+-- HM9-F4b..f seed data lives only in supabase/hms_setup.sql, matching how
+-- the product catalogue's seed data is kept separate from this file.

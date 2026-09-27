@@ -20,6 +20,10 @@ dist-ssr
 # never committed, even to a private repo
 scripts/private/
 
+# Company Halal (HMS) documents, kept locally for reference only — the repo
+# is public, so these must never be committed
+reference/hms/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

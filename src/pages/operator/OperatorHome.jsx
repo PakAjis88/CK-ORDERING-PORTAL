@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useT } from '../../lib/i18n'
+import { useAuth } from '../../lib/AuthContext'
 import { listAllOrders } from '../../lib/api/orders'
 import { listOutlets } from '../../lib/api/outlets'
 import { listProducts } from '../../lib/api/products'
@@ -9,11 +10,13 @@ import OrdersDashboard from './OrdersDashboard'
 import StockTracker from './StockTracker'
 import Catalogue from './Catalogue'
 import Production from './Production'
+import Hms from './hms/Hms'
 
 export default function OperatorHome() {
   const { t } = useT()
+  const { profile } = useAuth()
   const now = new Date()
-  const [tab, setTab] = useState('orders')
+  const [tab, setTab] = useState(profile.role === 'halal' ? 'hms' : 'orders')
   const [orders, setOrders] = useState([])
   const [outlets, setOutlets] = useState([])
   const [products, setProducts] = useState([])
@@ -41,12 +44,14 @@ export default function OperatorHome() {
             { id: 'stock', label: t('tabStockTracker') },
             { id: 'catalogue', label: t('tabCatalogue') },
             { id: 'production', label: t('tabProduction') },
+            { id: 'hms', label: 'HMS' },
           ]}
         />
         {tab === 'orders' && <OrdersDashboard now={now} orders={orders} outlets={outlets} onChanged={refreshOrders} />}
         {tab === 'stock' && <StockTracker outlets={outlets} products={products} />}
         {tab === 'catalogue' && <Catalogue products={products} onChanged={refreshProducts} />}
         {tab === 'production' && <Production orders={orders} />}
+        {tab === 'hms' && <Hms />}
       </main>
     </div>
   )
