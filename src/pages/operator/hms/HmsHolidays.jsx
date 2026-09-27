@@ -8,7 +8,7 @@ export default function HmsHolidays() {
   const [name, setName] = useState('')
   const [saving, setSaving] = useState(false)
 
-  const refresh = () => listHmsHolidays().then((data) => { setHolidays(data); setLoading(false) })
+  const refresh = () => { listHmsHolidays().then((data) => { setHolidays(data); setLoading(false) }) }
   useEffect(refresh, [])
 
   const add = async () => {

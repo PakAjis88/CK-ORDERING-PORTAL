@@ -90,3 +90,9 @@ Built in the order planned: schema (5 forms seeded verbatim from the Excel revie
 - The flagged-earlier UTC-vs-Malaysia-time issue in `is_stock_window_open()` (unrelated pre-existing code) is still unfixed — separate task.
 
 Nothing has been committed or pushed yet.
+
+## Post-deploy bug fix (2026-09-27)
+
+User reported: clicking Today → Holidays → History blanked the whole portal, needing a manual refresh. Console showed `Uncaught TypeError: l is not a function` inside React's internal effect-cleanup code, with no readable source location (minified, no sourcemap).
+
+Root cause, found by fetching the live deployed bundle and reading the exact bytes around the crash: `HmsHolidays.jsx`'s `refresh` was written as a concise-body arrow function — `const refresh = () => listHmsHolidays().then(...)` — so calling it returns the `.then()` chain's Promise instead of `undefined`. `useEffect(refresh, [])` handed that Promise to React as if it were the effect's cleanup function; React tried to call it when `HmsHolidays` unmounted (switching to History), and a Promise isn't callable. Fixed by wrapping the body in `{ }` so it returns nothing, matching the same pattern already used safely in `HmsToday.jsx` and the pre-existing `StockTracker.jsx`. Searched the rest of the codebase for the same concise-arrow-into-useEffect shape — no other instances found.
