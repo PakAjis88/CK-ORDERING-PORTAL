@@ -58,7 +58,14 @@ function drawOrderPage(doc, order) {
       idx++
       const units = l.cartons_ordered * l.units_per_carton_snapshot
       totKar += l.cartons_ordered; totUnit += units
-      body.push([String(idx), l.product.name, String(l.cartons_ordered), String(l.units_per_carton_snapshot), { content: String(units), styles: { fontStyle: 'bold' } }, '', '', '', ''])
+      const b1 = (l.delivery_batches || []).find((b) => b.batch_no === 1)
+      const b2 = (l.delivery_batches || []).find((b) => b.batch_no === 2)
+      body.push([
+        String(idx), l.product.name, String(l.cartons_ordered), String(l.units_per_carton_snapshot),
+        { content: String(units), styles: { fontStyle: 'bold' } },
+        b1 ? String(b1.qty) : '', b1?.expiry_date ? fmtDate(b1.expiry_date) : '',
+        b2 ? String(b2.qty) : '', b2?.expiry_date ? fmtDate(b2.expiry_date) : '',
+      ])
     })
   })
   body.push([{ content: 'Jumlah', colSpan: 2, styles: { fontStyle: 'bold' } }, { content: String(totKar), styles: { fontStyle: 'bold', halign: 'right' } }, '', { content: String(totUnit), styles: { fontStyle: 'bold', halign: 'right' } }, '', '', '', ''])
