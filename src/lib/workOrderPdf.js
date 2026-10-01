@@ -100,10 +100,13 @@ function drawOrderPage(doc, order) {
   doc.text('Disediakan oleh', M, fy + 12); doc.text('Disemak & diterima oleh', M + col, fy + 12); doc.text('Tarikh', M + 2 * col, fy + 12)
 }
 
+// Strip characters that aren't valid in Windows/Mac filenames.
+const safeFilePart = (s) => s.replace(/[/\\:*?"<>|]/g, '')
+
 export function downloadOrderPdf(order) {
   const doc = new jsPDF({ unit: 'pt', format: 'a4' })
   drawOrderPage(doc, order)
-  doc.save(`${order.order_no}.pdf`)
+  doc.save(`${safeFilePart(order.outlet.name)} ${order.order_no}.pdf`)
 }
 
 // One PDF, one page per order — for printing a whole day's work orders at once.
