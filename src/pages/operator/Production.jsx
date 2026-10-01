@@ -1,12 +1,24 @@
 import { useMemo, useState } from 'react'
 import { useT, CAT_ORDER } from '../../lib/i18n'
 import { productionSummary } from '../../lib/orderStatus'
+import { materialPlan } from '../../lib/materialPlan'
 import { downloadProductionPdf } from '../../lib/productionPdf'
+import { downloadCsv } from '../../lib/csv'
 import { Th, Td, Stat, Empty } from '../../components/ui'
 
-export default function Production({ orders }) {
+export default function Production({ orders, recipes, rawMaterials }) {
   const { t, catName } = useT()
   const [printing, setPrinting] = useState(false)
+  const plan = useMemo(() => materialPlan(orders, recipes, rawMaterials), [orders, recipes, rawMaterials])
+
+  const exportMaterialCsv = () => {
+    const head = ['Raw Material', 'Unit', 'Needed', 'On Hand', 'Shortfall', 'Suggested Buy']
+    const out = [head.join(',')]
+    plan.rows.forEach((r) => out.push([
+      `"${r.material?.name || r.rawMaterialId}"`, r.material?.unit || '', r.needed, r.onHand, r.shortfall, r.suggestedBuy,
+    ].join(',')))
+    downloadCsv(out.join('\n'), 'ck-material-plan.csv')
+  }
 
   const rows = useMemo(() => productionSummary(orders), [orders])
   const grouped = useMemo(
@@ -71,6 +83,56 @@ export default function Production({ orders }) {
           </tbody>
         </table>
       </div>
+
+      <div className="flex items-center justify-between mt-8 mb-3">
+        <h3 className="text-sm font-semibold text-slate-700">Material Plan</h3>
+        <button
+          onClick={exportMaterialCsv} disabled={plan.rows.length === 0}
+          className="text-sm bg-white border border-slate-300 hover:bg-slate-50 disabled:opacity-50 px-4 py-2 rounded-lg font-medium"
+        >
+          {t('exportCsv')}
+        </button>
+      </div>
+
+      {plan.missingRecipe.length > 0 && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-3 text-xs text-amber-800">
+          <span className="font-semibold">No recipe yet, not included below:</span>{' '}
+          {plan.missingRecipe.map((p) => p.name).join(', ')}
+        </div>
+      )}
+
+      {plan.rows.length === 0 ? (
+        <Empty>No raw material needs — nothing outstanding has a recipe yet.</Empty>
+      ) : (
+        <div className="bg-white border border-slate-200 rounded-xl overflow-x-auto">
+          <table className="w-full text-sm min-w-[560px]">
+            <thead className="bg-slate-50 text-slate-500 text-xs">
+              <tr>
+                <Th>Raw Material</Th>
+                <Th right>Needed</Th>
+                <Th right>On Hand</Th>
+                <Th right>Shortfall</Th>
+                <Th right>Suggested Buy</Th>
+              </tr>
+            </thead>
+            <tbody>
+              {plan.rows.map((r) => (
+                <tr key={r.rawMaterialId} className="border-t border-slate-100">
+                  <Td>{r.material?.name || r.rawMaterialId}</Td>
+                  <Td right mono>{r.needed.toLocaleString()} {r.material?.unit}</Td>
+                  <Td right mono>{r.onHand.toLocaleString()} {r.material?.unit}</Td>
+                  <Td right mono>
+                    <span className={r.shortfall > 0 ? 'text-amber-600 font-semibold' : 'text-emerald-600'}>
+                      {r.shortfall.toLocaleString()} {r.material?.unit}
+                    </span>
+                  </Td>
+                  <Td right mono>{r.suggestedBuy.toLocaleString()} {r.material?.unit}</Td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   )
 }

@@ -4,6 +4,7 @@ import { useAuth } from '../../lib/AuthContext'
 import { listAllOrders } from '../../lib/api/orders'
 import { listOutlets } from '../../lib/api/outlets'
 import { listProducts } from '../../lib/api/products'
+import { listRawMaterials, listProductRecipes } from '../../lib/api/materials'
 import Header from '../../components/Header'
 import { Tabs } from '../../components/ui'
 import OrdersDashboard from './OrdersDashboard'
@@ -20,14 +21,20 @@ export default function OperatorHome() {
   const [orders, setOrders] = useState([])
   const [outlets, setOutlets] = useState([])
   const [products, setProducts] = useState([])
+  const [rawMaterials, setRawMaterials] = useState([])
+  const [recipes, setRecipes] = useState([])
   const [loading, setLoading] = useState(true)
 
   const refreshOrders = useCallback(async () => setOrders(await listAllOrders()), [])
   const refreshProducts = useCallback(async () => setProducts(await listProducts()), [])
+  const refreshMaterials = useCallback(async () => {
+    const [m, r] = await Promise.all([listRawMaterials(), listProductRecipes()])
+    setRawMaterials(m); setRecipes(r)
+  }, [])
 
   useEffect(() => {
-    Promise.all([listAllOrders(), listOutlets(), listProducts()]).then(([o, ou, p]) => {
-      setOrders(o); setOutlets(ou); setProducts(p); setLoading(false)
+    Promise.all([listAllOrders(), listOutlets(), listProducts(), listRawMaterials(), listProductRecipes()]).then(([o, ou, p, m, r]) => {
+      setOrders(o); setOutlets(ou); setProducts(p); setRawMaterials(m); setRecipes(r); setLoading(false)
     })
   }, [])
 
@@ -49,8 +56,8 @@ export default function OperatorHome() {
         />
         {tab === 'orders' && <OrdersDashboard now={now} orders={orders} outlets={outlets} onChanged={refreshOrders} />}
         {tab === 'stock' && <StockTracker outlets={outlets} products={products} />}
-        {tab === 'catalogue' && <Catalogue products={products} onChanged={refreshProducts} />}
-        {tab === 'production' && <Production orders={orders} />}
+        {tab === 'catalogue' && <Catalogue products={products} rawMaterials={rawMaterials} onChanged={refreshProducts} onMaterialsChanged={refreshMaterials} />}
+        {tab === 'production' && <Production orders={orders} recipes={recipes} rawMaterials={rawMaterials} />}
         {tab === 'hms' && <Hms />}
       </main>
     </div>

@@ -4,16 +4,19 @@ import { fmt } from '../../lib/format'
 import { uploadProductPhoto, deleteProductPhoto } from '../../lib/api/productPhotos'
 import { upsertProduct } from '../../lib/api/products'
 import { CatHeader, Thumb } from '../../components/ui'
+import RecipeModal from './RecipeModal'
+import RawMaterials from './RawMaterials'
 
 const blankForm = { id: null, code: '', name: '', category: CAT_ORDER[0], unitPrice: '', unitsPerCarton: '' }
 
-export default function Catalogue({ products, onChanged }) {
+export default function Catalogue({ products, rawMaterials, onChanged, onMaterialsChanged }) {
   const { t, catName } = useT()
   const [busyId, setBusyId] = useState(null)
   const fileInputs = useRef({})
   const [form, setForm] = useState(null) // null = modal closed
   const [saving, setSaving] = useState(false)
   const [formError, setFormError] = useState('')
+  const [recipeProduct, setRecipeProduct] = useState(null) // product whose recipe modal is open
 
   const handleFile = async (product, file) => {
     if (!file) return
@@ -98,6 +101,12 @@ export default function Catalogue({ products, onChanged }) {
                       {t('edit')}
                     </button>
                     <button
+                      onClick={() => setRecipeProduct(p)}
+                      className="text-xs border border-slate-300 hover:bg-slate-50 px-2.5 py-1.5 rounded-md font-medium"
+                    >
+                      Recipe
+                    </button>
+                    <button
                       onClick={() => fileInputs.current[p.id]?.click()} disabled={busy}
                       className="text-xs border border-slate-300 hover:bg-slate-50 disabled:opacity-50 px-2.5 py-1.5 rounded-md font-medium"
                     >
@@ -177,6 +186,17 @@ export default function Catalogue({ products, onChanged }) {
           </div>
         </div>
       )}
+
+      {recipeProduct && (
+        <RecipeModal
+          product={recipeProduct} rawMaterials={rawMaterials}
+          onClose={() => setRecipeProduct(null)}
+          onSaved={async () => { setRecipeProduct(null); await onMaterialsChanged() }}
+        />
+      )}
+
+      <CatHeader>Raw Materials</CatHeader>
+      <RawMaterials rawMaterials={rawMaterials} onChanged={onMaterialsChanged} />
     </div>
   )
 }
