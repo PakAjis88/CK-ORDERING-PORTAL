@@ -65,6 +65,7 @@ export default function MyOrders({ now, orders, onEdit, onCancel }) {
                                     <span className="text-slate-400"> · {l.delivery_batches.map((b) => `${b.qty}@${fmtDate(b.expiry_date)}`).join(', ')}</span>
                                   )}
                                   {out > 0 && <span className="text-amber-700"> · {out} {t('outstanding')}</span>}
+                                  {out < 0 && <span className="text-violet-700 font-bold"> · {t('lnExtra', { c: -out })}</span>}
                                 </span>
                               </div>
                             )

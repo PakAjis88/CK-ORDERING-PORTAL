@@ -53,15 +53,19 @@ export function outstandingFor(orders) {
 // order network-wide (any outlet, any order date) — drives the
 // "Production" tab floor briefing sheet. Unlike outstandingFor, this does
 // NOT filter out full orders: it needs the running ordered/delivered
-// totals per product so balance = ordered - delivered even when 0.
+// totals per product so the table still adds up even when balance is 0.
+// balance is summed per line and floored at 0, so an extra delivery
+// (Dihantar Lebih) to one outlet never cancels another outlet's outstanding.
 export function productionSummary(orders) {
   const map = {}
   orders.filter((o) => !o.cancelled).forEach((o) => {
     o.order_lines.forEach((l) => {
-      if (!map[l.product_id]) map[l.product_id] = { productId: l.product_id, product: l.product, ordered: 0, delivered: 0 }
+      if (!map[l.product_id]) map[l.product_id] = { productId: l.product_id, product: l.product, ordered: 0, delivered: 0, balance: 0 }
+      const del = lineDelivered(l)
       map[l.product_id].ordered += l.cartons_ordered
-      map[l.product_id].delivered += lineDelivered(l)
+      map[l.product_id].delivered += del
+      map[l.product_id].balance += Math.max(0, l.cartons_ordered - del)
     })
   })
-  return Object.values(map).map((v) => ({ ...v, balance: v.ordered - v.delivered }))
+  return Object.values(map)
 }

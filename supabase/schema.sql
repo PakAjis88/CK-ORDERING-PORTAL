@@ -472,6 +472,8 @@ $$;
 -- {"order_line_id": uuid, "batch1_qty": int, "batch1_expiry": date|null,
 --  "batch1_delivered_date": date|null, "batch2_qty": int,
 --  "batch2_expiry": date|null, "batch2_delivered_date": date|null}
+-- A line may be delivered MORE than ordered ("Dihantar Lebih"); extra is
+-- derived (delivered - cartons_ordered), nothing is stored for it.
 -- delivered_date defaults to current_date if omitted/blank, and must fall
 -- within [order_date, current_date]. completed_date is recomputed as
 -- max(delivered_date) across the order's batches every call (not frozen on
@@ -488,8 +490,7 @@ declare
   v_q1 integer; v_q2 integer;
   v_e1 date; v_e2 date;
   v_dd1 date; v_dd2 date;
-  v_ordered_total integer;
-  v_delivered_total integer;
+  v_all_full boolean;
   v_max_delivered_date date;
 begin
   if not is_operator() then
@@ -510,9 +511,6 @@ begin
 
     v_q1 := greatest(0, coalesce((v_line->>'batch1_qty')::integer, 0));
     v_q2 := greatest(0, coalesce((v_line->>'batch2_qty')::integer, 0));
-    if v_q1 + v_q2 > v_ol.cartons_ordered then
-      raise exception 'Delivered quantity for line % exceeds cartons ordered', v_ol.id;
-    end if;
     v_e1 := nullif(v_line->>'batch1_expiry', '')::date;
     v_e2 := nullif(v_line->>'batch2_expiry', '')::date;
     v_dd1 := coalesce(nullif(v_line->>'batch1_delivered_date', '')::date, current_date);
@@ -548,17 +546,20 @@ begin
     end if;
   end loop;
 
-  select coalesce(sum(cartons_ordered), 0) into v_ordered_total
-    from order_lines where order_id = p_order_id;
-  select coalesce(sum(db.qty), 0) into v_delivered_total
-    from delivery_batches db join order_lines ol on ol.id = db.order_line_id
-    where ol.order_id = p_order_id;
+  -- Complete only when EVERY line has received at least what was ordered.
+  -- Per-line, not order-wide totals: an extra on one line (Dihantar Lebih)
+  -- must not hide a shortfall on another.
+  select not exists (
+    select 1 from order_lines ol
+    where ol.order_id = p_order_id
+      and coalesce((select sum(db.qty) from delivery_batches db where db.order_line_id = ol.id), 0) < ol.cartons_ordered
+  ) into v_all_full;
   select max(db.delivered_date) into v_max_delivered_date
     from delivery_batches db join order_lines ol on ol.id = db.order_line_id
     where ol.order_id = p_order_id;
 
   update orders
-    set completed_date = case when v_delivered_total >= v_ordered_total
+    set completed_date = case when v_all_full
                                then v_max_delivered_date
                                else null end
     where id = p_order_id

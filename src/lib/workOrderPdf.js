@@ -60,8 +60,9 @@ function drawOrderPage(doc, order) {
       totKar += l.cartons_ordered; totUnit += units
       const b1 = (l.delivery_batches || []).find((b) => b.batch_no === 1)
       const b2 = (l.delivery_batches || []).find((b) => b.batch_no === 2)
+      const extra = [b1, b2].reduce((s, b) => s + (b?.qty || 0), 0) - l.cartons_ordered
       body.push([
-        String(idx), l.product.name, String(l.cartons_ordered), String(l.units_per_carton_snapshot),
+        String(idx), extra > 0 ? `${l.product.name}\nDihantar Lebih +${extra}` : l.product.name, String(l.cartons_ordered), String(l.units_per_carton_snapshot),
         { content: String(units), styles: { fontStyle: 'bold' } },
         b1 ? String(b1.qty) : '', b1?.expiry_date ? fmtDate(b1.expiry_date) : '',
         b2 ? String(b2.qty) : '', b2?.expiry_date ? fmtDate(b2.expiry_date) : '',

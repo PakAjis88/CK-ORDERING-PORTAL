@@ -63,11 +63,10 @@ export default function OrdersDashboard({ now, orders, outlets, onChanged }) {
       }]
     })))
   }
-  const setField = (lineId, field, val, ordered) => setDraft((d) => {
+  // No upper cap: delivering more than ordered is allowed (Dihantar Lebih).
+  const setField = (lineId, field, val) => setDraft((d) => {
     const row = { ...d[lineId], [field]: val }
-    let q1 = Number(row.q1) || 0, q2 = Number(row.q2) || 0
-    if (field === 'q1') { q1 = Math.max(0, Math.min(ordered, q1)); q2 = Math.min(q2, ordered - q1) }
-    if (field === 'q2') { q2 = Math.max(0, Math.min(ordered, q2)); q1 = Math.min(q1, ordered - q2) }
+    const q1 = Math.max(0, Number(row.q1) || 0), q2 = Math.max(0, Number(row.q2) || 0)
     return { ...d, [lineId]: { ...row, q1, q2 } }
   })
   const markAll = (o) => setDraft(Object.fromEntries(o.order_lines.map((l) => {
@@ -102,7 +101,7 @@ export default function OrdersDashboard({ now, orders, outlets, onChanged }) {
   }
 
   const exportCsv = () => {
-    const head = ['Order No', 'Outlet', 'Order Date', 'Due Date', 'Product', 'Ordered', 'Delivered', 'Outstanding', 'Batch1 Qty', 'Batch1 Delivered', 'Batch1 Expiry', 'Batch2 Qty', 'Batch2 Delivered', 'Batch2 Expiry', 'Line Value', 'Order Total', 'Status', 'Completed', 'Note']
+    const head = ['Order No', 'Outlet', 'Order Date', 'Due Date', 'Product', 'Ordered', 'Delivered', 'Outstanding', 'Dihantar Lebih', 'Batch1 Qty', 'Batch1 Delivered', 'Batch1 Expiry', 'Batch2 Qty', 'Batch2 Delivered', 'Batch2 Expiry', 'Line Value', 'Order Total', 'Status', 'Completed', 'Note']
     const out = [head.join(',')]
     rows.forEach((o) => {
       const st = STATUS_EN[displayStatus(o, now)]
@@ -111,7 +110,7 @@ export default function OrdersDashboard({ now, orders, outlets, onChanged }) {
         const b = l.delivery_batches || []
         const b1 = b.find((x) => x.batch_no === 1), b2 = b.find((x) => x.batch_no === 2)
         out.push([
-          o.order_no, `"${o.outlet.name}"`, o.order_date, due, `"${l.product.name}"`, l.cartons_ordered, lineDelivered(l), l.cartons_ordered - lineDelivered(l),
+          o.order_no, `"${o.outlet.name}"`, o.order_date, due, `"${l.product.name}"`, l.cartons_ordered, lineDelivered(l), Math.max(0, l.cartons_ordered - lineDelivered(l)), Math.max(0, lineDelivered(l) - l.cartons_ordered) || '',
           b1?.qty || '', b1?.delivered_date || '', b1?.expiry_date || '', b2?.qty || '', b2?.delivered_date || '', b2?.expiry_date || '',
           Number(l.line_value).toFixed(2), Number(o.total).toFixed(2), st, o.completed_date || '', `"${o.note || ''}"`,
         ].join(','))
@@ -232,7 +231,7 @@ function PdfBtn({ order, label }) {
 // out of scope here).
 function DeliveryLineRow({ l, d, setField, t }) {
   const del2 = (Number(d.q1) || 0) + (Number(d.q2) || 0)
-  const lnSt = del2 >= l.cartons_ordered ? 'd' : del2 > 0 ? 'p' : 'o'
+  const lnSt = del2 > l.cartons_ordered ? 'x' : del2 === l.cartons_ordered ? 'd' : del2 > 0 ? 'p' : 'o'
   const persistedDelivered = lineDelivered(l)
   const isFollowUp = persistedDelivered > 0 && persistedDelivered < l.cartons_ordered
   const b1 = (l.delivery_batches || []).find((x) => x.batch_no === 1)
@@ -269,6 +268,7 @@ function DeliveryLineRow({ l, d, setField, t }) {
         </Td>
         <Td>
           {lnSt === 'd' && <span className="text-xs text-emerald-600 font-medium">✓ {t('lnDelivered')}</span>}
+          {lnSt === 'x' && <span className="text-xs text-violet-700 font-bold">✓ {t('lnExtra', { c: del2 - l.cartons_ordered })}</span>}
           {lnSt === 'p' && isFollowUp && <span className="text-xs text-amber-700 font-bold">⚠ {t('lnPartial')} · {t('remaining', { c: l.cartons_ordered - del2 })}</span>}
           {lnSt === 'p' && !isFollowUp && <span className="text-xs text-indigo-600 font-medium">{t('lnPartial')} · {t('remaining', { c: l.cartons_ordered - del2 })}</span>}
           {lnSt === 'o' && <span className="text-xs text-amber-600 font-medium">{t('lnOutstanding')}</span>}
