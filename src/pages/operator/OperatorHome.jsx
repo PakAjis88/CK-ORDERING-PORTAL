@@ -12,6 +12,7 @@ import StockTracker from './StockTracker'
 import Catalogue from './Catalogue'
 import Production from './Production'
 import Hms from './hms/Hms'
+import Users from './Users'
 
 export default function OperatorHome() {
   const { t } = useT()
@@ -27,6 +28,7 @@ export default function OperatorHome() {
 
   const refreshOrders = useCallback(async () => setOrders(await listAllOrders()), [])
   const refreshProducts = useCallback(async () => setProducts(await listProducts()), [])
+  const refreshOutlets = useCallback(async () => setOutlets(await listOutlets()), [])
   const refreshMaterials = useCallback(async () => {
     const [m, r] = await Promise.all([listRawMaterials(), listProductRecipes()])
     setRawMaterials(m); setRecipes(r)
@@ -52,6 +54,7 @@ export default function OperatorHome() {
             { id: 'catalogue', label: t('tabCatalogue') },
             { id: 'production', label: t('tabProduction') },
             { id: 'hms', label: 'HMS' },
+            ...(profile.role === 'halal' ? [] : [{ id: 'users', label: t('tabUsers') }]),
           ]}
         />
         {tab === 'orders' && <OrdersDashboard now={now} orders={orders} outlets={outlets} onChanged={refreshOrders} />}
@@ -59,6 +62,7 @@ export default function OperatorHome() {
         {tab === 'catalogue' && <Catalogue products={products} rawMaterials={rawMaterials} onChanged={refreshProducts} onMaterialsChanged={refreshMaterials} />}
         {tab === 'production' && <Production orders={orders} recipes={recipes} rawMaterials={rawMaterials} />}
         {tab === 'hms' && <Hms />}
+        {tab === 'users' && <Users onAdded={refreshOutlets} />}
       </main>
     </div>
   )
