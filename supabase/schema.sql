@@ -125,11 +125,9 @@ create table delivery_batches (
 
 create index idx_delivery_batches_line on delivery_batches(order_line_id);
 
--- Convenience view: delivered qty per order line
-create view order_line_delivered as
-  select order_line_id, coalesce(sum(qty), 0) as delivered_qty
-  from delivery_batches
-  group by order_line_id;
+-- Delivered qty per order line is computed client-side (lineDelivered in
+-- src/lib/orderStatus.js). A view for it was removed: views bypass RLS, so
+-- it exposed delivery data to anonymous callers (supabase/fix_order_line_delivered_view.sql).
 
 -- ---------------------------------------------------------------------------
 -- stock_reports  (one per outlet per month)

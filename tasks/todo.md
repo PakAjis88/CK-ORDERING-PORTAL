@@ -1,26 +1,15 @@
-# Todo — Keep-alive ping so the free Supabase project never auto-pauses
+# Todo — Fix Supabase lint "Security Definer View" (order_line_delivered)
 
-Why: on 2026-10 Supabase paused the free project after 7 days of inactivity (login stopped working until it was restored). A small scheduled job that touches the database every few days makes a 7-day silence much less likely.
-
-Honest limit: Supabase does not document exactly what counts as "activity", so this is very likely but not guaranteed to work. Real daily use by outlets remains the best protection.
-
-## Design (kept minimal)
-- One GitHub Actions workflow, `.github/workflows/keep-alive.yml`, on a cron schedule (every 3 days, ~03:00 Malaysia time) plus a manual "Run workflow" button.
-- It does one `curl` GET to the project's REST API: `.../rest/v1/products?select=id&limit=1` with the public anon key. That executes a real query on Postgres (returns `[]` for anonymous callers because of RLS, which is fine and exposes no data).
-- Fails loudly (non-200 → job fails → GitHub emails the repo owner), so a paused/broken project gets noticed instead of silently ignored.
-- No secrets needed: the Supabase URL and anon key are already public (shipped in the site's JavaScript). They go in the workflow file as plain text. The service-role key and any passwords are NOT used.
+The view ignored RLS: an anonymous caller (public anon key, no login) could read delivered quantities per order line, while the real table `delivery_batches` correctly returned nothing. Nothing in the app used the view, so it is dropped.
 
 ## Steps
-- [ ] 1. Create `.github/workflows/keep-alive.yml` (schedule `0 19 */3 * *` UTC, `workflow_dispatch`, one curl step with `--fail`)
-- [ ] 2. Commit locally (no push yet)
-- [ ] 3. Ask for a separate go-ahead, then push
-- [ ] 4. In GitHub → Actions tab, click "Run workflow" once to prove it works (green run = HTTP 200 from Supabase); confirm the run appears in Supabase's API logs if visible
-- [ ] 5. Add a note to the Review section and update memory (reference_ck_portal_infra: keep-alive exists, how to check it)
-
-## Known caveats to be aware of
-- GitHub automatically disables scheduled workflows in a repo with no commits for 60 days. You commit often so this is unlikely, but if the portal goes quiet for 2 months the ping stops. Fallback: a free external pinger (e.g. cron-job.org) calling the same URL, no repo needed — can be added later if you prefer.
-- GitHub cron can run a few minutes late and occasionally skips a run under load; every-3-days leaves room for a missed run within the 7-day window.
-- Backups are separate: still download the data from Supabase every month or so.
+- [x] 1. `supabase/fix_order_line_delivered_view.sql`: `drop view if exists public.order_line_delivered;` (paste into SQL Editor)
+- [x] 2. `supabase/schema.sql`: view definition removed, replaced by a short comment
+- [x] 3. Checklist + review in this file
+- [x] 4. User ran the SQL in the Supabase SQL Editor
+- [x] 5. Verified: anon GET of the view now returns 404 (PGRST205); operator sign-in works and orders with their delivery batches still load (33 orders)
+- [ ] 6. Commit; push only after a separate go-ahead
 
 ## Review
-(to be filled in at the end)
+
+One view dropped, no app code touched. Before: anonymous read of the view returned HTTP 200 with rows. After: HTTP 404, relation not found. The app never referenced the view (delivered qty is computed client-side), and an operator session still loads all orders with delivery batches, confirming nothing depended on it. Remaining: commit/push of the repo files (schema.sql, the new fix SQL, this file).
