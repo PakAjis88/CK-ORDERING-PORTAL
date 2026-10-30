@@ -1,0 +1,20 @@
+# Touches the Supabase database every 3 days so the free-tier project is never
+# auto-paused after 7 days of inactivity. Uses only the public anon key (the
+# same one shipped in the website); an anonymous read returns [] under RLS.
+# A non-200 response fails the job, and GitHub emails the repo owner.
+name: Keep Supabase alive
+
+on:
+  schedule:
+    - cron: '0 19 */3 * *'   # 19:00 UTC = 03:00 Malaysia time, every 3rd day
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Query Supabase
+        run: |
+          curl --fail --silent --show-error --max-time 30 \
+            "https://fsyxmezvwdwbsztgnlgx.supabase.co/rest/v1/products?select=id&limit=1" \
+            -H "apikey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZzeXhtZXp2d2R3YnN6dGdubGd4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY2MDAwOTEsImV4cCI6MjEwMjE3NjA5MX0.5g69X1-Y2joKmxUKOg83wV-jzwLmcSbKcJHhvORg-_s"
