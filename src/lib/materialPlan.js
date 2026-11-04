@@ -10,7 +10,7 @@ import { lineDelivered } from './orderStatus'
 
 // Amount of one raw material needed for one order line's outstanding cartons,
 // given one recipe line's basis.
-function neededForLine(remainingCartons, unitsPerCarton, recipeLine, batchYield) {
+export function neededForLine(remainingCartons, unitsPerCarton, recipeLine, batchYield) {
   const { qty, basis } = recipeLine
   if (basis === 'carton') return remainingCartons * qty
   if (basis === 'unit') return remainingCartons * unitsPerCarton * qty

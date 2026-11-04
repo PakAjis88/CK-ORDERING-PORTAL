@@ -1,41 +1,62 @@
-# Todo — Operator can add new users (outlet + staff)
+# Todo — Penghantaran Extra (buffer stock) linked to the latest order
 
-Today all logins are created by a private script run on the developer's PC with the service-role key (`scripts/private/provision_users.mjs`). A browser can never hold that key, so the operator needs a small server-side function that does the same job after checking the caller really is an operator.
-
-## Confirmed with user
-- Operator can add: **new outlet logins** (also creates the outlet: code + name) and **staff logins** (operator, halal/HMS).
-- First password is **typed by the operator** (same practice as today, outlet password = phone number).
-
-## Design
-- **Supabase Edge Function `create-user`** (server-side, gets the service-role key automatically; no secret for the user to handle). Same calls as the provisioning script: `auth.admin.createUser({ email_confirm: true })` + insert `user_profiles` (+ insert `outlets` row for a new outlet).
-- Function first checks the caller: valid login (JWT required) AND `user_profiles.role` is `operator` or `admin`. **Halal accounts cannot add users.** Staff roles it may create: `operator`, `halal` only (never `admin`).
-- Validation: email format, password >= 6 chars, outlet code not already used, email not already used. If any step fails after another succeeded, it undoes what it created (no orphan outlet/auth user).
-- Never returns or logs passwords. Browser calls it via `supabase.functions.invoke('create-user')`.
-- New **Users** tab in the operator portal (shown to operator/admin only): one form, kind = Outlet / Staff; success message shows the email created. No user list/edit/delete in this round (RLS only lets a user read their own profile; separate feature if wanted).
-- Not an SQL-only RPC on purpose: inserting into `auth.users` directly is fragile (identities, GoTrue version changes), unlike the password-reset trick which only updates a column.
+Operator records items CK sent without an order. They knock off the outlet's outstanding quantity (latest order first, then older); only cartons beyond everything owed become extra (charged at normal price). Dashboard card counts outlets that received extra (buffer beyond orders + Dihantar Lebih). Full design: approved plan (allocation rule, `recompute_order`, `record_buffer_delivery`, `remove_buffer_batch`).
 
 ## Steps
-- [x] 1. `supabase/functions/create-user/index.ts` (Edge Function code, kept in repo so it's versioned) + short deploy note in the file header
-- [x] 2. `src/lib/api/users.js`: `createUser(...)` wrapper around `functions.invoke`, surfaces the function's error message
-- [x] 3. `src/pages/operator/Users.jsx` + tab in `OperatorHome.jsx` (hidden for halal)
-- [x] 4. i18n: tab label en + ms (form text is plain English like Raw Materials)
-- [x] 5. USER deployed (done): deploy the function (Supabase Dashboard → Edge Functions → create `create-user`, paste the code, deploy); I give exact clicks
-- [x] 6. Live test (13/13 passed; test users + outlet removed and confirmed gone) with disposable accounts (a test staff user and a test outlet), as the real operator: created, can log in, outlet appears in lists, duplicate email/code rejected, outlet account and halal account are refused, bad password rejected. Test users removed afterwards (Authentication → Users in dashboard, or I clean up if the service key file is restored)
-- [ ] 7. lint + build done; commit done; push only after a separate go-ahead (push deploys the Users tab to Netlify)
-- [x] 8. Review section + memory update
-
-## Side finding (separate small task, needs user in the dashboard)
-Supabase Auth currently has **public sign-up enabled** (`disable_signup: false`). Nobody can get data (no profile row = no access) but strangers can create junk auth accounts. The app never uses sign-up, and the Edge Function is unaffected by this setting. Recommend switching it off: Dashboard → Authentication → Sign In / Providers → turn off "Allow new users to sign up".
-
-## Risks / honest notes
-- Edge Function is deployed outside GitHub/Netlify, so a push does not update it; redeploys are a manual paste (same as SQL files). Free tier includes Edge Functions.
-- An operator can create operator/halal accounts, i.e. give others full operator powers by design. Only trusted staff should hold operator logins.
+- [x] 1. This checklist
+- [x] 2. Baseline recorded: 33 orders, sum of totals RM 59,711.14; 10 over-delivered lines in 6 real orders (would add RM 4,727.34 if charged)
+- [x] 3. `supabase/buffer_delivery_setup.sql` (+ mirror in `schema.sql`) written; backfill split into OPTIONAL `buffer_delivery_backfill.sql` because it would re-charge 6 real past orders (RM 4,727.34)
+- [x] 4. USER ran buffer_delivery_setup.sql (2026-11-04); pre-SQL snapshot taken first
+- [x] 5. Verified: after setup SQL, 33 orders, RM 59,711.14, 0 orders or lines changed (backfill NOT run; user decision pending)
+- [x] 6. API (`orders.js`) + helpers (`orderStatus.js`: `extraCartons`, `hasExtra`, `bufferQty`)
+- [x] 7. `BufferDeliveryModal.jsx` + "+ Penghantaran Extra" button + link inside expanded order
+- [x] 8. `OrdersDashboard.jsx`: new card, panel changes (buffer batches + Remove, extra lines, Mark-all fix), Extra tag, CSV columns; `OperatorHome.jsx` passes products
+- [x] 9. Outlet `MyOrders.jsx` labels, `workOrderPdf.js` remarks, i18n (en + ms)
+- [x] 10. Lint + build clean; live tests 34/34 passed on sandbox MBG034 (knock-off order, Dihantar Lebih, extra line, removal, rules, all-or-nothing, normal delivery, permissions); cleaned up, zero residue vs snapshot
+- [x] 11a. Review written; committed (4c6a1ee)
+- [ ] 11b. Push only after separate go-ahead; confirm deploy
 
 ## Review
-Operator can add new outlet logins (creates the outlet too) and staff logins (operator, halal) from a new Users tab; halal accounts don't see the tab and the server refuses them anyway.
 
-Built as a Supabase Edge Function (create-user, service-role key stays server-side) because a browser can't create auth users safely. Live test as the real operator, 13/13 passed: unauthenticated refused (401); staff + outlet creation; duplicate email, duplicate outlet code, short password, role admin all rejected; new users can log in with correct profile/outlet link; outlet and halal accounts refused (403); new outlet visible to operator. Dashboard setting 'Verify JWT with legacy secret' left ON (works).
+- **What changed:** operators can record items CK sent without an order (Penghantaran Extra). Cartons knock off what the outlet still owes for that product (latest order first, then older); only the part beyond what is owed is extra, charged at the normal carton price on the outlet's latest order (Dihantar Lebih if the product is on it, otherwise a new extra line with ordered 0). Over-delivery from the normal form is now charged too. New dashboard card counts outlets receiving extra; entries can be removed again; outlet order view and work-order PDF show the extras.
+- **Database:** buffer_delivery_setup.sql (run 2026-11-04); rollback_buffer_delivery.sql kept for reversal; optional buffer_delivery_backfill.sql would add RM 4,727.34 across 6 past orders (decision with the user).
+- **Tested:** 34/34 live checks on sandbox MBG034, zero residue; existing orders/totals identical to the pre-SQL snapshot.
+- **Notes:** knock-off is decided at entry time only; the extra is always attached to the latest order not dated after the delivery.
 
-Test data (2 auth users + outlet MBGTEST1) removed by the user in the dashboard and confirmed gone (outlets back to 34).
+---
 
-Open: (1) the function lives in Supabase, not Netlify: a push does not update it; redeploy by pasting index.ts again after any change. (2) Public sign-up is still enabled in Supabase Auth: user should switch it off (Authentication > Sign In / Providers). (3) No user list/edit/delete/reset yet.
+# Todo — Raw materials upgrade: costing, product-line filter, dedicated tab (2026-11-04)
+
+Approved plan: cost per unit of use on raw materials; filter by product line + single product; new "Raw Materials" tab that also holds the Material Plan (moved out of Production); recipe cost per finished product. (Penghantaran Extra items above are still pending the user running their SQL.)
+
+## Steps
+- [x] A1. Checklist
+- [x] A2. `supabase/raw_material_costing_setup.sql` (unit_cost, product_line, `set_raw_material_cost`, `set_product_line`, seed lines) + mirrored in `schema.sql`
+- [x] A3. USER ran the SQL (2026-11-04). Must be done BEFORE this front-end is pushed
+- [x] A4. API: `materials.js` (unitCost, setRawMaterialCost), `products.js` (product_line, setProductLine)
+- [x] A5. `recipeCost.js` (+ export `neededForLine`), cost card in `RecipeModal.jsx`
+- [x] A6. `RawMaterialsTab.jsx` (filters, list with cost columns, Material Plan moved in); `OperatorHome.jsx` tab (hidden for halal); remove plan from `Production.jsx` and list from `Catalogue.jsx`
+- [x] A7. Catalogue product form: Product line field
+- [x] A8. Lint + build clean; recipeCost hand-checked; live RPC tests 12/12 passed (set/clear/negative/unknown, trim/clear line, outlet refused, Cashew 107.50 per carton, Nuttybites 12 materials, Cashew 3); test values restored
+- [x] A9a. Review written; committed
+- [ ] A9b. Push only after separate go-ahead; confirm deploy
+
+## Review (A)
+
+- **What changed:** raw materials now have a cost per unit of use (e.g. RM 2.98 per kg), products have a product line, and there is a dedicated Raw Materials tab (hidden for halal) with Product line + Finished product filters, a cost-to-make card per product (per unit and per carton, flagged incomplete when a material has no cost), and the Material Plan moved in from Production.
+- **Database:** raw_material_costing_setup.sql (run 2026-11-04); rollback_raw_material_costing.sql drops it again (typed costs/lines would be lost). All 12 materials start with no cost; nothing invented.
+- **Tested:** 12/12 live checks (set/clear/negative/unknown, trim/clear line, outlet refused, Cashew RM 107.50 per carton), values restored; lint + build clean.
+- **Notes:** costs are current prices only (no history). Halal role can still read costs through the API; only the tab is hidden.
+
+
+---
+
+# Rollback safety net (2026-11-04)
+
+Before the user runs the two setup SQL files:
+- [x] R1. Read-only snapshot of orders, order_lines, delivery_batches, products, raw_materials (33 orders, RM 59,711.14, matches baseline) saved in the session scratchpad as `pre_sql_snapshot.json` (script: gitignored `scripts/private/snapshot.mjs`)
+- [x] R2. `supabase/rollback_raw_material_costing.sql` (drops 2 functions, constraint, 2 columns; typed costs/lines are lost)
+- [x] R3. `supabase/rollback_buffer_delivery.sql` (one transaction: remove buffer batches/extra lines, re-price lines to ordered x price, recompute completion for affected orders, restore previous `record_delivery`, drop buffer functions/columns, restore original constraints)
+- [x] R4. Both setup files run; live tests done; totals identical to snapshot
+
+Rollback phrases: "Roll back raw material costing" / "Roll back Penghantaran Extra" / "Roll back the last push" (Netlify > Deploys > previous deploy > Publish deploy, or git revert).

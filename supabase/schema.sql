@@ -53,6 +53,7 @@ create table products (
   active             boolean not null default true,
   photo_url          text,
   display_order      smallint,                 -- category-grouped display order across the app
+  product_line       text,                     -- finished-product line (e.g. Nuttybites); free text
   created_at         timestamptz not null default now()
 );
 
@@ -469,7 +470,6 @@ begin
 end;
 $$;
 
--- Operator: record delivery batches for an order's lines and recompute
 -- Internal helper: re-price every line, re-total the order, recompute completion.
 -- Complete only when EVERY line has delivered >= ordered.
 create or replace function recompute_order(p_order_id uuid)
@@ -507,6 +507,7 @@ end;
 $$;
 revoke execute on function recompute_order(uuid) from public, anon, authenticated;
 
+-- Operator: record delivery batches for an order's lines and recompute
 -- completed_date. p_lines: jsonb array of
 -- {"order_line_id": uuid, "batch1_qty": int, "batch1_expiry": date|null,
 --  "batch1_delivered_date": date|null, "batch2_qty": int,
@@ -588,12 +589,11 @@ begin
     where ol.order_id = p_order_id and ol.is_extra
       and not exists (select 1 from delivery_batches db where db.order_line_id = ol.id);
 
-  return v_order;
   v_order := recompute_order(p_order_id);
+  return v_order;
 end;
 $$;
 
--- Is the monthly stock report window open right now? Public to any
 -- Buffer delivery (Penghantaran Extra). p_lines: [{"product_id": uuid, "cartons": int, "expiry": date|null}]
 -- All-or-nothing. Returns a jsonb summary of where every carton went.
 create or replace function record_buffer_delivery(p_outlet_id uuid, p_delivered_date date, p_lines jsonb)
@@ -750,6 +750,7 @@ end;
 $$;
 grant execute on function remove_buffer_batch(uuid) to authenticated;
 
+-- Is the monthly stock report window open right now? Public to any
 -- authenticated user so the frontend can render the banner state.
 -- Open from the 20th through the actual last day of the month, whatever
 -- that is (28/29/30/31) — date arithmetic instead of a hardcoded upper
@@ -1361,6 +1362,7 @@ create table raw_materials (
   unit           text not null check (unit in ('kg', 'g', 'L', 'ml', 'pcs')),
   pack_size      numeric(10,3) not null default 1 check (pack_size > 0),
   stock_on_hand  numeric(12,3) not null default 0 check (stock_on_hand >= 0),
+  unit_cost      numeric(12,4) check (unit_cost is null or unit_cost >= 0), -- RM per ONE unit of use (e.g. per kg); null = not entered
   active         boolean not null default true,
   created_at     timestamptz not null default now()
 );
@@ -1479,4 +1481,39 @@ $$;
 
 grant execute on function upsert_raw_material(uuid, text, text, text, numeric) to authenticated;
 grant execute on function set_raw_material_stock(uuid, numeric) to authenticated;
+grant execute on function set_raw_material_cost(uuid, numeric) to authenticated;
+grant execute on function set_product_line(uuid, text) to authenticated;
+
+-- Operator: set (or clear with null) a raw material's cost per unit of use.
+create or replace function set_raw_material_cost(p_id uuid, p_cost numeric)
+returns void
+language plpgsql security definer set search_path = public as $
+begin
+  if not is_operator() then
+    raise exception 'Operator only';
+  end if;
+  if p_cost is not null and p_cost < 0 then
+    raise exception 'Cost cannot be negative';
+  end if;
+  update raw_materials set unit_cost = p_cost where id = p_id;
+  if not found then
+    raise exception 'Raw material not found';
+  end if;
+end;
+$;
+
+-- Operator: set (or clear with empty text) a product's line.
+create or replace function set_product_line(p_id uuid, p_line text)
+returns void
+language plpgsql security definer set search_path = public as $
+begin
+  if not is_operator() then
+    raise exception 'Operator only';
+  end if;
+  update products set product_line = nullif(trim(p_line), '') where id = p_id;
+  if not found then
+    raise exception 'Product not found';
+  end if;
+end;
+$;
 grant execute on function save_product_recipe(uuid, integer, jsonb) to authenticated;

@@ -2,12 +2,11 @@ import { useRef, useState } from 'react'
 import { useT, CAT_ORDER } from '../../lib/i18n'
 import { fmt } from '../../lib/format'
 import { uploadProductPhoto, deleteProductPhoto } from '../../lib/api/productPhotos'
-import { upsertProduct } from '../../lib/api/products'
+import { upsertProduct, setProductLine } from '../../lib/api/products'
 import { CatHeader, Thumb } from '../../components/ui'
 import RecipeModal from './RecipeModal'
-import RawMaterials from './RawMaterials'
 
-const blankForm = { id: null, code: '', name: '', category: CAT_ORDER[0], unitPrice: '', unitsPerCarton: '' }
+const blankForm = { id: null, code: '', name: '', category: CAT_ORDER[0], unitPrice: '', unitsPerCarton: '', productLine: '' }
 
 export default function Catalogue({ products, rawMaterials, onChanged, onMaterialsChanged }) {
   const { t, catName } = useT()
@@ -41,7 +40,7 @@ export default function Catalogue({ products, rawMaterials, onChanged, onMateria
 
   const openAdd = () => { setForm({ ...blankForm }); setFormError('') }
   const openEdit = (p) => {
-    setForm({ id: p.id, code: p.code, name: p.name, category: p.category, unitPrice: String(p.unit_price), unitsPerCarton: String(p.units_per_carton) })
+    setForm({ id: p.id, code: p.code, name: p.name, category: p.category, unitPrice: String(p.unit_price), unitsPerCarton: String(p.units_per_carton), productLine: p.product_line || '' })
     setFormError('')
   }
   const setField = (field, value) => setForm((f) => ({ ...f, [field]: value }))
@@ -50,7 +49,7 @@ export default function Catalogue({ products, rawMaterials, onChanged, onMateria
     setSaving(true)
     setFormError('')
     try {
-      await upsertProduct({
+      const saved = await upsertProduct({
         id: form.id,
         code: form.code.trim(),
         name: form.name.trim(),
@@ -58,6 +57,8 @@ export default function Catalogue({ products, rawMaterials, onChanged, onMateria
         unitPrice: Number(form.unitPrice),
         unitsPerCarton: Number(form.unitsPerCarton),
       })
+      const prevLine = form.id ? (products.find((p) => p.id === form.id)?.product_line || '') : ''
+      if (form.productLine.trim() !== prevLine) await setProductLine(saved.id, form.productLine.trim())
       setForm(null)
       await onChanged()
     } catch (e) {
@@ -159,6 +160,17 @@ export default function Catalogue({ products, rawMaterials, onChanged, onMateria
                   {CAT_ORDER.map((c) => <option key={c} value={c}>{catName(c)}</option>)}
                 </select>
               </label>
+              <label className="block">
+                <span className="text-xs text-slate-500">Product line (e.g. Nuttybites)</span>
+                <input
+                  value={form.productLine} list="product-lines"
+                  onChange={(e) => setField('productLine', e.target.value)}
+                  className="w-full mt-1 border border-slate-300 rounded-md py-1.5 px-2 text-sm"
+                />
+                <datalist id="product-lines">
+                  {[...new Set(products.map((p) => p.product_line).filter(Boolean))].sort().map((l) => <option key={l} value={l} />)}
+                </datalist>
+              </label>
               <div className="grid grid-cols-2 gap-3">
                 <label className="block">
                   <span className="text-xs text-slate-500">{t('unitPrice')}</span>
@@ -194,9 +206,6 @@ export default function Catalogue({ products, rawMaterials, onChanged, onMateria
           onSaved={async () => { setRecipeProduct(null); await onMaterialsChanged() }}
         />
       )}
-
-      <CatHeader>Raw Materials</CatHeader>
-      <RawMaterials rawMaterials={rawMaterials} onChanged={onMaterialsChanged} />
     </div>
   )
 }

@@ -13,6 +13,7 @@ import Catalogue from './Catalogue'
 import Production from './Production'
 import Hms from './hms/Hms'
 import Users from './Users'
+import RawMaterialsTab from './RawMaterialsTab'
 
 export default function OperatorHome() {
   const { t } = useT()
@@ -53,6 +54,7 @@ export default function OperatorHome() {
             { id: 'stock', label: t('tabStockTracker') },
             { id: 'catalogue', label: t('tabCatalogue') },
             { id: 'production', label: t('tabProduction') },
+            ...(profile.role === 'halal' ? [] : [{ id: 'materials', label: t('tabRawMaterials') }]),
             { id: 'hms', label: 'HMS' },
             ...(profile.role === 'halal' ? [] : [{ id: 'users', label: t('tabUsers') }]),
           ]}
@@ -60,7 +62,8 @@ export default function OperatorHome() {
         {tab === 'orders' && <OrdersDashboard now={now} orders={orders} outlets={outlets} products={products} onChanged={refreshOrders} />}
         {tab === 'stock' && <StockTracker outlets={outlets} products={products} />}
         {tab === 'catalogue' && <Catalogue products={products} rawMaterials={rawMaterials} onChanged={refreshProducts} onMaterialsChanged={refreshMaterials} />}
-        {tab === 'production' && <Production orders={orders} recipes={recipes} rawMaterials={rawMaterials} />}
+        {tab === 'production' && <Production orders={orders} />}
+        {tab === 'materials' && <RawMaterialsTab products={products} rawMaterials={rawMaterials} recipes={recipes} orders={orders} onMaterialsChanged={refreshMaterials} />}
         {tab === 'hms' && <Hms />}
         {tab === 'users' && <Users onAdded={refreshOutlets} />}
       </main>

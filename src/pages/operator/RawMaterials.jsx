@@ -1,15 +1,18 @@
 import { useState } from 'react'
-import { upsertRawMaterial, setRawMaterialStock } from '../../lib/api/materials'
+import { upsertRawMaterial, setRawMaterialStock, setRawMaterialCost } from '../../lib/api/materials'
 
 const UNITS = ['kg', 'g', 'L', 'ml', 'pcs']
 const blankForm = { id: null, code: '', name: '', unit: 'kg', packSize: '1' }
 
-export default function RawMaterials({ rawMaterials, onChanged }) {
+// usedIn: { [rawMaterialId]: ['Product name', ...] } built from the recipes
+export default function RawMaterials({ rawMaterials, usedIn = {}, onChanged }) {
   const [form, setForm] = useState(null) // null = add/edit modal closed
   const [saving, setSaving] = useState(false)
   const [formError, setFormError] = useState('')
   const [stockEdits, setStockEdits] = useState({}) // id -> draft value while editing inline
   const [savingStockId, setSavingStockId] = useState(null)
+  const [costEdits, setCostEdits] = useState({})
+  const [savingCostId, setSavingCostId] = useState(null)
 
   const openAdd = () => { setForm({ ...blankForm }); setFormError('') }
   const openEdit = (m) => { setForm({ id: m.id, code: m.code, name: m.name, unit: m.unit, packSize: String(m.packSize) }); setFormError('') }
@@ -45,6 +48,20 @@ export default function RawMaterials({ rawMaterials, onChanged }) {
     }
   }
 
+  // empty box clears the cost (back to "not set")
+  const saveCost = async (m) => {
+    const value = costEdits[m.id]
+    if (value === undefined) return
+    setSavingCostId(m.id)
+    try {
+      await setRawMaterialCost(m.id, value === '' ? null : Number(value))
+      setCostEdits((s) => { const next = { ...s }; delete next[m.id]; return next })
+      await onChanged()
+    } finally {
+      setSavingCostId(null)
+    }
+  }
+
   return (
     <div>
       <div className="flex justify-end mb-3">
@@ -54,44 +71,69 @@ export default function RawMaterials({ rawMaterials, onChanged }) {
       </div>
 
       <div className="bg-white border border-slate-200 rounded-xl overflow-x-auto">
-        <table className="w-full text-sm">
+        <table className="w-full text-sm min-w-[900px]">
           <thead className="bg-slate-50 text-slate-500 text-xs">
             <tr>
               <th className="px-4 py-2 text-left font-medium">Code</th>
               <th className="px-4 py-2 text-left font-medium">Name</th>
-              <th className="px-4 py-2 text-left font-medium">Unit</th>
+              <th className="px-4 py-2 text-left font-medium">Used in</th>
+              <th className="px-4 py-2 text-right font-medium">Cost per unit (RM)</th>
               <th className="px-4 py-2 text-right font-medium">Pack size</th>
+              <th className="px-4 py-2 text-right font-medium">Cost per pack</th>
               <th className="px-4 py-2 text-right font-medium">Stock on hand</th>
               <th className="px-4 py-2" />
             </tr>
           </thead>
           <tbody>
-            {rawMaterials.map((m) => (
-              <tr key={m.id} className="border-t border-slate-100">
-                <td className="px-4 py-2.5 font-mono text-xs text-slate-400">{m.code}</td>
-                <td className="px-4 py-2.5">{m.name}</td>
-                <td className="px-4 py-2.5 font-mono text-xs">{m.unit}</td>
-                <td className="px-4 py-2.5 text-right font-mono">{m.packSize}</td>
-                <td className="px-4 py-2.5 text-right">
-                  <div className="flex items-center justify-end gap-1.5">
-                    <input
-                      value={stockEdits[m.id] ?? m.stockOnHand}
-                      onChange={(e) => setStockEdits((s) => ({ ...s, [m.id]: e.target.value.replace(/[^\d.]/g, '') }))}
-                      className="w-20 text-right border border-slate-300 rounded-md py-1 px-2 font-mono text-sm"
-                    />
-                    <button
-                      onClick={() => saveStock(m)} disabled={savingStockId === m.id || stockEdits[m.id] === undefined}
-                      className="text-xs border border-slate-300 hover:bg-slate-50 disabled:opacity-40 px-2 py-1 rounded-md font-medium"
-                    >
-                      {savingStockId === m.id ? '…' : 'Save'}
-                    </button>
-                  </div>
-                </td>
-                <td className="px-4 py-2.5 text-right">
-                  <button onClick={() => openEdit(m)} className="text-xs border border-slate-300 hover:bg-slate-50 px-2.5 py-1.5 rounded-md font-medium">Edit</button>
-                </td>
-              </tr>
-            ))}
+            {rawMaterials.length === 0 && (
+              <tr><td colSpan={8} className="text-center text-slate-400 py-8 text-sm">No raw materials match this filter.</td></tr>
+            )}
+            {rawMaterials.map((m) => {
+              const used = (usedIn[m.id] || []).join(', ')
+              return (
+                <tr key={m.id} className="border-t border-slate-100">
+                  <td className="px-4 py-2.5 font-mono text-xs text-slate-400">{m.code}</td>
+                  <td className="px-4 py-2.5">{m.name}</td>
+                  <td className="px-4 py-2.5 text-xs text-slate-500 max-w-[200px] truncate" title={used}>{used || '—'}</td>
+                  <td className="px-4 py-2.5 text-right">
+                    <div className="flex items-center justify-end gap-1.5">
+                      <input
+                        value={costEdits[m.id] ?? (m.unitCost ?? '')} placeholder="not set"
+                        onChange={(e) => setCostEdits((s) => ({ ...s, [m.id]: e.target.value.replace(/[^\d.]/g, '') }))}
+                        className="w-20 text-right border border-slate-300 rounded-md py-1 px-2 font-mono text-sm"
+                      />
+                      <span className="text-xs text-slate-400 w-8 text-left">/{m.unit}</span>
+                      <button
+                        onClick={() => saveCost(m)} disabled={savingCostId === m.id || costEdits[m.id] === undefined}
+                        className="text-xs border border-slate-300 hover:bg-slate-50 disabled:opacity-40 px-2 py-1 rounded-md font-medium"
+                      >
+                        {savingCostId === m.id ? '…' : 'Save'}
+                      </button>
+                    </div>
+                  </td>
+                  <td className="px-4 py-2.5 text-right font-mono">{m.packSize} <span className="text-xs text-slate-400">{m.unit}</span></td>
+                  <td className="px-4 py-2.5 text-right font-mono">{m.unitCost == null ? '—' : (m.unitCost * m.packSize).toFixed(2)}</td>
+                  <td className="px-4 py-2.5 text-right">
+                    <div className="flex items-center justify-end gap-1.5">
+                      <input
+                        value={stockEdits[m.id] ?? m.stockOnHand}
+                        onChange={(e) => setStockEdits((s) => ({ ...s, [m.id]: e.target.value.replace(/[^\d.]/g, '') }))}
+                        className="w-20 text-right border border-slate-300 rounded-md py-1 px-2 font-mono text-sm"
+                      />
+                      <button
+                        onClick={() => saveStock(m)} disabled={savingStockId === m.id || stockEdits[m.id] === undefined}
+                        className="text-xs border border-slate-300 hover:bg-slate-50 disabled:opacity-40 px-2 py-1 rounded-md font-medium"
+                      >
+                        {savingStockId === m.id ? '…' : 'Save'}
+                      </button>
+                    </div>
+                  </td>
+                  <td className="px-4 py-2.5 text-right">
+                    <button onClick={() => openEdit(m)} className="text-xs border border-slate-300 hover:bg-slate-50 px-2.5 py-1.5 rounded-md font-medium">Edit</button>
+                  </td>
+                </tr>
+              )
+            })}
           </tbody>
         </table>
       </div>

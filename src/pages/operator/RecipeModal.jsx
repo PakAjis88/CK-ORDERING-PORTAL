@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { getProductRecipe, saveProductRecipe } from '../../lib/api/materials'
+import { recipeCost } from '../../lib/recipeCost'
 
 const BASIS_OPTIONS = [
   ['carton', 'Per carton'],
@@ -46,6 +47,12 @@ export default function RecipeModal({ product, rawMaterials, onClose, onSaved })
     }
   }
 
+  const isValid = (l) => l.rawMaterialId && l.qty !== ''
+  const asLine = (l) => ({ rawMaterialId: l.rawMaterialId, qty: Number(l.qty), basis: l.basis })
+  const yieldNum = Number(batchYield) || 0
+  const costs = lines.map((l) => (isValid(l) ? recipeCost(product, yieldNum, [asLine(l)], rawMaterials).rows[0].cost : null))
+  const total = recipeCost(product, yieldNum, lines.filter(isValid).map(asLine), rawMaterials)
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50">
       <div className="bg-white rounded-2xl shadow-xl max-w-lg w-full max-h-[90vh] flex flex-col">
@@ -69,7 +76,8 @@ export default function RecipeModal({ product, rawMaterials, onClose, onSaved })
               <div className="text-xs font-semibold text-slate-600 uppercase tracking-wide mb-2">Raw materials</div>
               <div className="space-y-2">
                 {lines.map((line, i) => (
-                  <div key={i} className="grid grid-cols-[1fr_80px_100px_auto] gap-2 items-center">
+                  <div key={i}>
+                  <div className="grid grid-cols-[1fr_80px_100px_auto] gap-2 items-center">
                     <select
                       value={line.rawMaterialId} onChange={(e) => setLine(i, 'rawMaterialId', e.target.value)}
                       className="border border-slate-300 rounded-md py-1.5 px-2 text-sm bg-white"
@@ -90,9 +98,22 @@ export default function RecipeModal({ product, rawMaterials, onClose, onSaved })
                     </select>
                     <button onClick={() => removeLine(i)} className="text-red-500 text-sm px-1">✕</button>
                   </div>
+                  {costs[i] != null && <div className="text-[11px] text-slate-400 text-right mt-0.5">RM {costs[i].toFixed(2)} per carton</div>}
+                  </div>
                 ))}
               </div>
               <button onClick={addLine} className="mt-2 text-xs text-teal-700 border border-teal-300 hover:bg-teal-50 px-2.5 py-1 rounded-md font-medium">+ Add line</button>
+
+              <div className="mt-4 bg-slate-50 border border-slate-200 rounded-lg p-3 text-sm">
+                <div className="text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Cost to make</div>
+                <div className="flex gap-6 font-mono">
+                  <span>RM {total.perUnit.toFixed(4)} <span className="text-xs text-slate-400 font-sans">per unit</span></span>
+                  <span>RM {total.perCarton.toFixed(2)} <span className="text-xs text-slate-400 font-sans">per carton ({product.units_per_carton} units)</span></span>
+                </div>
+                {total.missing.length > 0 && (
+                  <p className="text-xs text-amber-700 mt-1.5">Incomplete: no cost set for {total.missing.join(', ')}.</p>
+                )}
+              </div>
 
               {error && <p className="text-xs text-red-600 mt-3">{error}</p>}
               <div className="flex gap-2 mt-5">

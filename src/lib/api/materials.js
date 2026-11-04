@@ -3,13 +3,14 @@ import { supabase } from '../supabaseClient'
 export async function listRawMaterials() {
   const { data, error } = await supabase
     .from('raw_materials')
-    .select('id, code, name, unit, pack_size, stock_on_hand, active')
+    .select('id, code, name, unit, pack_size, stock_on_hand, unit_cost, active')
     .eq('active', true)
     .order('code')
   if (error) throw error
   return data.map((m) => ({
     id: m.id, code: m.code, name: m.name, unit: m.unit,
     packSize: Number(m.pack_size), stockOnHand: Number(m.stock_on_hand),
+    unitCost: m.unit_cost == null ? null : Number(m.unit_cost), // RM per one unit of use; null = not entered
   }))
 }
 
@@ -51,6 +52,12 @@ export async function upsertRawMaterial({ id, code, name, unit, packSize }) {
 
 export async function setRawMaterialStock(id, qty) {
   const { error } = await supabase.rpc('set_raw_material_stock', { p_id: id, p_qty: qty })
+  if (error) throw error
+}
+
+// cost: RM per one unit of use (e.g. per kg); null clears it
+export async function setRawMaterialCost(id, cost) {
+  const { error } = await supabase.rpc('set_raw_material_cost', { p_id: id, p_cost: cost })
   if (error) throw error
 }
 
