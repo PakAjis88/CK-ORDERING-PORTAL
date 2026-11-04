@@ -9,6 +9,14 @@ export const deliveredCartons = (order) => order.order_lines.reduce((s, l) => s 
 export const isFull = (order) => order.order_lines.every((l) => lineDelivered(l) >= l.cartons_ordered)
 export const anyDelivered = (order) => order.order_lines.some((l) => lineDelivered(l) > 0)
 
+// Extra = delivered beyond what was ordered: Dihantar Lebih on an ordered line,
+// or a buffer item with no order (line ordered 0, is_extra). One rule for both.
+export const extraCartons = (line) => Math.max(0, lineDelivered(line) - line.cartons_ordered)
+export const hasExtra = (order) => order.order_lines.some((l) => extraCartons(l) > 0)
+// Cartons added by the Penghantaran Extra function (buffer batches), which
+// the normal 2-batch delivery form does not edit.
+export const bufferQty = (line) => (line.delivery_batches || []).filter((b) => b.is_buffer).reduce((s, b) => s + (b.qty || 0), 0)
+
 export const STATUS_META = {
   pending: { key: 'stPending', cls: 'bg-amber-100 text-amber-800 border-amber-200' },
   partial: { key: 'stPartial', cls: 'bg-indigo-100 text-indigo-700 border-indigo-200' },

@@ -58,14 +58,14 @@ export default function MyOrders({ now, orders, onEdit, onCancel }) {
                             const out = l.cartons_ordered - del
                             return (
                               <div key={l.id} className="flex justify-between text-xs">
-                                <span className="text-slate-600">{l.product.name} <span className="font-mono">×{l.cartons_ordered}</span></span>
+                                <span className="text-slate-600">{l.product.name} {l.is_extra ? <span className="text-violet-700 font-semibold">(Penghantaran Extra)</span> : <span className="font-mono">×{l.cartons_ordered}</span>}</span>
                                 <span className="font-mono text-slate-500">
-                                  {del}/{l.cartons_ordered} {t('lnDelivered').toLowerCase()}
+                                  {l.is_extra ? del : `${del}/${l.cartons_ordered}`} {t('lnDelivered').toLowerCase()}
                                   {(l.delivery_batches || []).length > 0 && (
-                                    <span className="text-slate-400"> · {l.delivery_batches.map((b) => `${b.qty}@${fmtDate(b.expiry_date)}`).join(', ')}</span>
+                                    <span className="text-slate-400"> · {l.delivery_batches.map((b) => `${b.qty}@${fmtDate(b.expiry_date)}${b.is_buffer ? ' (buffer)' : ''}`).join(', ')}</span>
                                   )}
                                   {out > 0 && <span className="text-amber-700"> · {out} {t('outstanding')}</span>}
-                                  {out < 0 && <span className="text-violet-700 font-bold"> · {t('lnExtra', { c: -out })}</span>}
+                                  {out < 0 && <span className="text-violet-700 font-bold"> · {t(l.is_extra ? 'lnExtraItem' : 'lnExtra', { c: -out })}</span>}
                                 </span>
                               </div>
                             )

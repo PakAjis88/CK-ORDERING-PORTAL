@@ -57,7 +57,7 @@ export default function OperatorHome() {
             ...(profile.role === 'halal' ? [] : [{ id: 'users', label: t('tabUsers') }]),
           ]}
         />
-        {tab === 'orders' && <OrdersDashboard now={now} orders={orders} outlets={outlets} onChanged={refreshOrders} />}
+        {tab === 'orders' && <OrdersDashboard now={now} orders={orders} outlets={outlets} products={products} onChanged={refreshOrders} />}
         {tab === 'stock' && <StockTracker outlets={outlets} products={products} />}
         {tab === 'catalogue' && <Catalogue products={products} rawMaterials={rawMaterials} onChanged={refreshProducts} onMaterialsChanged={refreshMaterials} />}
         {tab === 'production' && <Production orders={orders} recipes={recipes} rawMaterials={rawMaterials} />}

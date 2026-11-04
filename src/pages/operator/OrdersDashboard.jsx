@@ -1,8 +1,9 @@
 import { Fragment, useMemo, useState } from 'react'
 import { useT } from '../../lib/i18n'
 import { fmt, fmtDate, monthKey, monthLabel, dueDate, todayISO } from '../../lib/format'
-import { displayStatus, deliveredCartons, orderedCartons, lineDelivered, STATUS_META } from '../../lib/orderStatus'
-import { recordDelivery } from '../../lib/api/orders'
+import { displayStatus, deliveredCartons, orderedCartons, lineDelivered, hasExtra, bufferQty, STATUS_META } from '../../lib/orderStatus'
+import { recordDelivery, removeBufferBatch } from '../../lib/api/orders'
+import BufferDeliveryModal from './BufferDeliveryModal'
 import { downloadOrderPdf, downloadBatchPdf } from '../../lib/workOrderPdf'
 import { downloadCsv } from '../../lib/csv'
 import { Th, Td, Badge, Stat, Select, ReorderBadge } from '../../components/ui'
@@ -24,7 +25,7 @@ const lineStage = (l) => {
   return 2 // fully delivered
 }
 
-export default function OrdersDashboard({ now, orders, outlets, onChanged }) {
+export default function OrdersDashboard({ now, orders, outlets, products, onChanged }) {
   const { t } = useT()
   const months = useMemo(() => [...new Set(orders.map((o) => monthKey(o.order_date)))].sort().reverse(), [orders])
   const [month, setMonth] = useState('all')
@@ -34,6 +35,7 @@ export default function OrdersDashboard({ now, orders, outlets, onChanged }) {
   const [draft, setDraft] = useState({})
   const [saving, setSaving] = useState(false)
   const [printingBatch, setPrintingBatch] = useState(false)
+  const [bufferFor, setBufferFor] = useState(null) // null = closed; otherwise the outlet id to pre-fill ('' = none)
 
   const todaysOrders = useMemo(() => orders.filter((o) => o.order_date === todayISO() && !o.cancelled), [orders])
   const printToday = () => {
@@ -51,17 +53,25 @@ export default function OrdersDashboard({ now, orders, outlets, onChanged }) {
   const value = scope.reduce((s, o) => s + Number(o.total), 0)
   const cnt = (k) => scope.filter((o) => displayStatus(o, now) === k).length
   const rate = scope.length ? Math.round((cnt('accomplished') / scope.length) * 100) : 0
+  const extraOutlets = new Set(scope.filter(hasExtra).map((o) => o.outlet_id)).size
 
+  // The two normal delivery batches of a line, as form values (buffer batches are separate).
+  const persistedDraft = (l) => {
+    const b = l.delivery_batches || []
+    const b1 = b.find((x) => x.batch_no === 1), b2 = b.find((x) => x.batch_no === 2)
+    return {
+      q1: b1?.qty || 0, e1: b1?.expiry_date || '', dd1: b1?.delivered_date || todayISO(),
+      q2: b2?.qty || 0, e2: b2?.expiry_date || '', dd2: b2?.delivered_date || todayISO(),
+    }
+  }
   const openRow = (o) => {
     setExpanded(o.id)
-    setDraft(Object.fromEntries(o.order_lines.map((l) => {
-      const b = l.delivery_batches || []
-      const b1 = b.find((x) => x.batch_no === 1), b2 = b.find((x) => x.batch_no === 2)
-      return [l.id, {
-        q1: b1?.qty || 0, e1: b1?.expiry_date || '', dd1: b1?.delivered_date || todayISO(),
-        q2: b2?.qty || 0, e2: b2?.expiry_date || '', dd2: b2?.delivered_date || todayISO(),
-      }]
-    })))
+    setDraft(Object.fromEntries(o.order_lines.map((l) => [l.id, persistedDraft(l)])))
+  }
+  const removeBuffer = async (batchId) => {
+    if (!window.confirm('Remove this Penghantaran Extra entry?')) return
+    await removeBufferBatch(batchId)
+    await onChanged()
   }
   // No upper cap: delivering more than ordered is allowed (Dihantar Lebih).
   const setField = (lineId, field, val) => setDraft((d) => {
@@ -72,6 +82,8 @@ export default function OrdersDashboard({ now, orders, outlets, onChanged }) {
   const markAll = (o) => setDraft(Object.fromEntries(o.order_lines.map((l) => {
     const persisted = lineDelivered(l)
     const d = draft[l.id] || {}
+    // Already complete (or an extra/buffer line): never rewrite what was delivered.
+    if (l.is_extra || persisted >= l.cartons_ordered) return [l.id, persistedDraft(l)]
     if (persisted > 0 && persisted < l.cartons_ordered) {
       const b1 = (l.delivery_batches || []).find((x) => x.batch_no === 1)
       return [l.id, {
@@ -101,7 +113,7 @@ export default function OrdersDashboard({ now, orders, outlets, onChanged }) {
   }
 
   const exportCsv = () => {
-    const head = ['Order No', 'Outlet', 'Order Date', 'Due Date', 'Product', 'Ordered', 'Delivered', 'Outstanding', 'Dihantar Lebih', 'Batch1 Qty', 'Batch1 Delivered', 'Batch1 Expiry', 'Batch2 Qty', 'Batch2 Delivered', 'Batch2 Expiry', 'Line Value', 'Order Total', 'Status', 'Completed', 'Note']
+    const head = ['Order No', 'Outlet', 'Order Date', 'Due Date', 'Product', 'Ordered', 'Delivered', 'Outstanding', 'Dihantar Lebih', 'Buffer', 'Extra Item', 'Batch1 Qty', 'Batch1 Delivered', 'Batch1 Expiry', 'Batch2 Qty', 'Batch2 Delivered', 'Batch2 Expiry', 'Line Value', 'Order Total', 'Status', 'Completed', 'Note']
     const out = [head.join(',')]
     rows.forEach((o) => {
       const st = STATUS_EN[displayStatus(o, now)]
@@ -111,6 +123,7 @@ export default function OrdersDashboard({ now, orders, outlets, onChanged }) {
         const b1 = b.find((x) => x.batch_no === 1), b2 = b.find((x) => x.batch_no === 2)
         out.push([
           o.order_no, `"${o.outlet.name}"`, o.order_date, due, `"${l.product.name}"`, l.cartons_ordered, lineDelivered(l), Math.max(0, l.cartons_ordered - lineDelivered(l)), Math.max(0, lineDelivered(l) - l.cartons_ordered) || '',
+          bufferQty(l) || '', l.is_extra ? 'Yes' : '',
           b1?.qty || '', b1?.delivered_date || '', b1?.expiry_date || '', b2?.qty || '', b2?.delivered_date || '', b2?.expiry_date || '',
           Number(l.line_value).toFixed(2), Number(o.total).toFixed(2), st, o.completed_date || '', `"${o.note || ''}"`,
         ].join(','))
@@ -121,21 +134,28 @@ export default function OrdersDashboard({ now, orders, outlets, onChanged }) {
 
   return (
     <div>
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-5">
+      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3 mb-5">
         <Stat label={t('statOrders')} value={scope.length} />
         <Stat label={t('statValue')} value={fmt(value)} mono />
         <Stat label={t('statRate')} value={`${rate}%`} tone={rate >= 70 ? 'good' : 'warn'} />
         <Stat label={t('statPending')} value={cnt('pending')} tone={cnt('pending') ? 'warn' : 'muted'} />
         <Stat label={t('statPartial')} value={cnt('partial')} tone={cnt('partial') ? 'info' : 'muted'} />
         <Stat label={t('statOverdue')} value={cnt('overdue')} tone={cnt('overdue') ? 'bad' : 'muted'} />
+        <Stat label={t('statExtra')} value={extraOutlets} tone={extraOutlets ? 'info' : 'muted'} />
       </div>
       <div className="flex flex-wrap gap-2 mb-3">
         <Select value={month} onChange={setMonth} label={t('month')} options={[['all', t('allMonths')], ...months.map((m) => [m, monthLabel(m)])]} />
         <Select value={outlet} onChange={setOutlet} label={t('colOutlet')} options={[['all', t('allOutlets')], ...outlets.map((o) => [o.id, o.name])]} />
         <Select value={status} onChange={setStatus} label={t('status')} options={[['all', t('allStatuses')], ['pending', t('stPending')], ['partial', t('stPartial')], ['overdue', t('stOverdue')], ['accomplished', t('stDone')], ['accomplished_late', t('stLate')], ['cancelled', t('stCancelled')]]} />
         <button
+          onClick={() => setBufferFor('')}
+          className="ml-auto text-sm bg-violet-600 hover:bg-violet-700 text-white font-medium px-4 py-2 rounded-lg"
+        >
+          {t('btnExtra')}
+        </button>
+        <button
           onClick={printToday} disabled={todaysOrders.length === 0 || printingBatch}
-          className="ml-auto text-sm bg-white border border-slate-300 hover:bg-slate-50 disabled:opacity-50 px-4 py-2 rounded-lg font-medium"
+          className="text-sm bg-white border border-slate-300 hover:bg-slate-50 disabled:opacity-50 px-4 py-2 rounded-lg font-medium"
         >
           {printingBatch ? '…' : t('printBatch', { n: todaysOrders.length })}
         </button>
@@ -158,7 +178,7 @@ export default function OrdersDashboard({ now, orders, outlets, onChanged }) {
               return (
                 <Fragment key={o.id}>
                   <tr className={`border-t border-slate-100 hover:bg-slate-50 ${locked ? 'opacity-50' : 'cursor-pointer'}`} onClick={() => (locked ? null : isOpen ? setExpanded(null) : openRow(o))}>
-                    <Td mono>{o.order_no}{o.is_reorder && <ReorderBadge />}</Td>
+                    <Td mono>{o.order_no}{o.is_reorder && <ReorderBadge />}{hasExtra(o) && <span className="ml-1.5 text-[10px] font-sans font-semibold text-violet-700 bg-violet-100 border border-violet-200 rounded px-1.5 py-0.5">Extra</span>}</Td>
                     <Td>{o.outlet.name}</Td>
                     <Td>{fmtDate(o.order_date)}</Td>
                     <Td right mono>{o.order_lines.length}</Td>
@@ -180,6 +200,7 @@ export default function OrdersDashboard({ now, orders, outlets, onChanged }) {
                             {t('fulfilTitle')} · <span className="text-slate-400 normal-case font-normal">{t('dueBy', { date: fmtDate(dueDate(o).toISOString().slice(0, 10)) })}</span>
                           </div>
                           <div className="flex items-center gap-3">
+                            <button onClick={() => setBufferFor(o.outlet_id)} className="text-xs text-violet-700 hover:underline">{t('btnExtra')}</button>
                             <button onClick={() => markAll(o)} className="text-xs text-teal-700 hover:underline">{t('markAllDelivered')}</button>
                             <PdfBtn order={o} label={t('downloadPdf')} />
                           </div>
@@ -191,7 +212,7 @@ export default function OrdersDashboard({ now, orders, outlets, onChanged }) {
                             </thead>
                             <tbody>
                               {sortedLines.map((l) => (
-                                <DeliveryLineRow key={l.id} l={l} d={draft[l.id] || { q1: 0, e1: '', dd1: todayISO(), q2: 0, e2: '', dd2: todayISO() }} setField={setField} t={t} />
+                                <DeliveryLineRow key={l.id} l={l} d={draft[l.id] || { q1: 0, e1: '', dd1: todayISO(), q2: 0, e2: '', dd2: todayISO() }} setField={setField} t={t} onRemoveBuffer={removeBuffer} />
                               ))}
                             </tbody>
                           </table>
@@ -209,6 +230,14 @@ export default function OrdersDashboard({ now, orders, outlets, onChanged }) {
           </tbody>
         </table>
       </div>
+
+      {bufferFor !== null && (
+        <BufferDeliveryModal
+          outlets={outlets} products={products} initialOutletId={bufferFor}
+          onClose={() => setBufferFor(null)}
+          onSaved={async () => { setBufferFor(null); await onChanged() }}
+        />
+      )}
     </div>
   )
 }
@@ -229,8 +258,10 @@ function PdfBtn({ order, label }) {
 // see plan doc for the "known limitation" note on lines with both batches
 // already used but still short (needs the schema's batch_no cap lifted,
 // out of scope here).
-function DeliveryLineRow({ l, d, setField, t }) {
-  const del2 = (Number(d.q1) || 0) + (Number(d.q2) || 0)
+function DeliveryLineRow({ l, d, setField, t, onRemoveBuffer }) {
+  // buffer cartons (Penghantaran Extra) count toward the line but aren't edited in batch 1/2
+  const buffers = (l.delivery_batches || []).filter((x) => x.is_buffer)
+  const del2 = (Number(d.q1) || 0) + (Number(d.q2) || 0) + bufferQty(l)
   const lnSt = del2 > l.cartons_ordered ? 'x' : del2 === l.cartons_ordered ? 'd' : del2 > 0 ? 'p' : 'o'
   const persistedDelivered = lineDelivered(l)
   const isFollowUp = persistedDelivered > 0 && persistedDelivered < l.cartons_ordered
@@ -241,7 +272,7 @@ function DeliveryLineRow({ l, d, setField, t }) {
     <Fragment>
       <tr className="border-t border-slate-100">
         <Td>{l.product.name}</Td>
-        <Td right mono>{l.cartons_ordered}</Td>
+        <Td right mono>{l.is_extra ? '—' : l.cartons_ordered}</Td>
         <Td right>
           {b1Locked
             ? <span className="font-mono text-sm text-slate-500">{d.q1}</span>
@@ -268,12 +299,25 @@ function DeliveryLineRow({ l, d, setField, t }) {
         </Td>
         <Td>
           {lnSt === 'd' && <span className="text-xs text-emerald-600 font-medium">✓ {t('lnDelivered')}</span>}
-          {lnSt === 'x' && <span className="text-xs text-violet-700 font-bold">✓ {t('lnExtra', { c: del2 - l.cartons_ordered })}</span>}
+          {lnSt === 'x' && <span className="text-xs text-violet-700 font-bold">✓ {t(l.is_extra ? 'lnExtraItem' : 'lnExtra', { c: del2 - l.cartons_ordered })}</span>}
           {lnSt === 'p' && isFollowUp && <span className="text-xs text-amber-700 font-bold">⚠ {t('lnPartial')} · {t('remaining', { c: l.cartons_ordered - del2 })}</span>}
           {lnSt === 'p' && !isFollowUp && <span className="text-xs text-indigo-600 font-medium">{t('lnPartial')} · {t('remaining', { c: l.cartons_ordered - del2 })}</span>}
           {lnSt === 'o' && <span className="text-xs text-amber-600 font-medium">{t('lnOutstanding')}</span>}
         </Td>
       </tr>
+      {buffers.length > 0 && (
+        <tr className="bg-violet-50 border-t border-violet-100">
+          <td colSpan={9} className="px-4 py-1.5 text-xs text-violet-800">
+            <span className="font-semibold">Penghantaran Extra:</span>{' '}
+            {buffers.map((b) => (
+              <span key={b.id} className="mr-3 whitespace-nowrap">
+                {b.qty} · {fmtDate(b.delivered_date)}{b.expiry_date ? ` · exp ${fmtDate(b.expiry_date)}` : ''}{' '}
+                <button type="button" onClick={() => onRemoveBuffer(b.id)} className="text-red-600 hover:underline">Remove</button>
+              </span>
+            ))}
+          </td>
+        </tr>
+      )}
       {isFollowUp && (
         <tr className="bg-amber-50 border-t border-amber-100">
           <td colSpan={9} className="px-4 py-1.5 text-xs text-amber-700 font-medium">
