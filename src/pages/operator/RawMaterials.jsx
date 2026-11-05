@@ -1,11 +1,13 @@
 import { useState } from 'react'
 import { upsertRawMaterial, setRawMaterialStock, setRawMaterialCost } from '../../lib/api/materials'
+import { nextMaterialCode } from '../../lib/materialCode'
 
 const UNITS = ['kg', 'g', 'L', 'ml', 'pcs']
 const blankForm = { id: null, code: '', name: '', unit: 'kg', packSize: '1' }
 
 // usedIn: { [rawMaterialId]: ['Product name', ...] } built from the recipes
-export default function RawMaterials({ rawMaterials, usedIn = {}, onChanged }) {
+// allMaterials: the full list (rawMaterials may be filtered), used to pick the next code
+export default function RawMaterials({ rawMaterials, allMaterials = rawMaterials, usedIn = {}, onChanged }) {
   const [form, setForm] = useState(null) // null = add/edit modal closed
   const [saving, setSaving] = useState(false)
   const [formError, setFormError] = useState('')
@@ -14,7 +16,7 @@ export default function RawMaterials({ rawMaterials, usedIn = {}, onChanged }) {
   const [costEdits, setCostEdits] = useState({})
   const [savingCostId, setSavingCostId] = useState(null)
 
-  const openAdd = () => { setForm({ ...blankForm }); setFormError('') }
+  const openAdd = () => { setForm({ ...blankForm, code: nextMaterialCode(allMaterials) }); setFormError('') }
   const openEdit = (m) => { setForm({ id: m.id, code: m.code, name: m.name, unit: m.unit, packSize: String(m.packSize) }); setFormError('') }
   const setField = (field, value) => setForm((f) => ({ ...f, [field]: value }))
 
@@ -146,10 +148,10 @@ export default function RawMaterials({ rawMaterials, usedIn = {}, onChanged }) {
               <label className="block">
                 <span className="text-xs text-slate-500">Code</span>
                 <input
-                  value={form.code} disabled={!!form.id}
-                  onChange={(e) => setField('code', e.target.value)}
-                  className="w-full mt-1 border border-slate-300 rounded-md py-1.5 px-2 text-sm disabled:bg-slate-50 disabled:text-slate-400"
+                  value={form.code} disabled
+                  className="w-full mt-1 border border-slate-300 rounded-md py-1.5 px-2 text-sm bg-slate-50 text-slate-500 font-mono"
                 />
+                {!form.id && <span className="text-xs text-slate-400">Assigned automatically</span>}
               </label>
               <label className="block">
                 <span className="text-xs text-slate-500">Name</span>

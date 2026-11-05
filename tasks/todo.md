@@ -60,3 +60,28 @@ Before the user runs the two setup SQL files:
 - [x] R4. Both setup files run; live tests done; totals identical to snapshot
 
 Rollback phrases: "Roll back raw material costing" / "Roll back Penghantaran Extra" / "Roll back the last push" (Netlify > Deploys > previous deploy > Publish deploy, or git revert).
+
+---
+
+# Todo — Automatic raw material codes + universal carton box (2026-11-05)
+
+Approved plan: new raw materials get their code automatically; ONE shared "Carton Box (universal)" at RM 1.64 per pcs used at 1 per carton in P05/P06/P07/P08 and P03 (Kuah Rojak 490g), replacing the four separate boxes.
+
+## Steps
+- [x] U1. Checklist
+- [x] U2. Auto code in the Add raw material form (`RawMaterials.jsx`, `RawMaterialsTab.jsx`); check the logic on a few cases
+- [x] U3. `supabase/universal_carton_box_setup.sql` + `supabase/rollback_universal_carton_box.sql`
+- [x] U4. Read-only preview of the recipe lines that will change + fresh snapshot
+- [x] U5. Lint + build
+- [x] U6. USER ran universal_carton_box_setup.sql (2026-11-05)
+- [x] U7. Read-only verification passed (one universal box RM 1.64, 5 recipes at 1 per carton, 0 old boxes, P03 box-only recipe); user to eyeball the tab
+- [x] U8a. Review written; committed
+- [ ] U8b. Push only after separate go-ahead
+
+## Review (U)
+
+- **What changed:** new raw materials get their code automatically (RM-001, RM-002, ...; existing RM-BOX-xxx style codes ignored; locked when editing). The four separate outer boxes were replaced by ONE "Carton Box (universal)" at RM 1.64 per pcs, used at 1 per carton in Almond, Cashew, Mix, Pistachio and Kuah Rojak 490g (which got a box-only recipe).
+- **Database:** universal_carton_box_setup.sql run 2026-11-05 (data only); rollback_universal_carton_box.sql kept for reversal.
+- **Checked:** auto-code logic on 5 cases; lint + build clean; live data verified read-only afterwards (9 materials, 0 old boxes, 5 recipes on the new box, Cashew RM 37.64 per carton).
+- **Notes:** the Cashew box line was 0.03 per unit (0.9 box per carton) and is now 1 per carton. Kuah Rojak shows RM 1.64 per carton (box only) until its other ingredients are added.
+

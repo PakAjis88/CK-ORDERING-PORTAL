@@ -87,7 +87,7 @@ export default function RawMaterialsTab({ products, rawMaterials, recipes, order
       )}
 
       <CatHeader>Raw materials</CatHeader>
-      <RawMaterials rawMaterials={shown} usedIn={usedIn} onChanged={onMaterialsChanged} />
+      <RawMaterials rawMaterials={shown} allMaterials={rawMaterials} usedIn={usedIn} onChanged={onMaterialsChanged} />
 
       <div className="flex items-center justify-between mt-8 mb-3">
         <h3 className="text-sm font-semibold text-slate-700">Material Plan</h3>
