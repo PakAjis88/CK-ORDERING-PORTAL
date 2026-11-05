@@ -14,7 +14,7 @@ Operator records items CK sent without an order. They knock off the outlet's out
 - [x] 9. Outlet `MyOrders.jsx` labels, `workOrderPdf.js` remarks, i18n (en + ms)
 - [x] 10. Lint + build clean; live tests 34/34 passed on sandbox MBG034 (knock-off order, Dihantar Lebih, extra line, removal, rules, all-or-nothing, normal delivery, permissions); cleaned up, zero residue vs snapshot
 - [x] 11a. Review written; committed (4c6a1ee)
-- [ ] 11b. Push only after separate go-ahead; confirm deploy
+- [x] 11b. Pushed 2026-11-05 (43e956a); live bundle confirmed
 
 ## Review
 
@@ -39,7 +39,7 @@ Approved plan: cost per unit of use on raw materials; filter by product line + s
 - [x] A7. Catalogue product form: Product line field
 - [x] A8. Lint + build clean; recipeCost hand-checked; live RPC tests 12/12 passed (set/clear/negative/unknown, trim/clear line, outlet refused, Cashew 107.50 per carton, Nuttybites 12 materials, Cashew 3); test values restored
 - [x] A9a. Review written; committed
-- [ ] A9b. Push only after separate go-ahead; confirm deploy
+- [x] A9b. Pushed 2026-11-05 with the others; live
 
 ## Review (A)
 
@@ -76,7 +76,7 @@ Approved plan: new raw materials get their code automatically; ONE shared "Carto
 - [x] U6. USER ran universal_carton_box_setup.sql (2026-11-05)
 - [x] U7. Read-only verification passed (one universal box RM 1.64, 5 recipes at 1 per carton, 0 old boxes, P03 box-only recipe); user to eyeball the tab
 - [x] U8a. Review written; committed
-- [ ] U8b. Push only after separate go-ahead
+- [x] U8b. Pushed 2026-11-05; live
 
 ## Review (U)
 
