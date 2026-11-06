@@ -103,7 +103,7 @@ Approved plan: new `delivery` role with a simple screen (outlet -> products/cart
 - [x] D7. Staff UI `pages/delivery/DeliveryHome.jsx` (new delivery wizard, this week, report), App.jsx routing/role homes, Users form role option, operator Deliveries tab, i18n
 - [x] D8. Lint + build
 - [x] D9. Live tests 63/63 passed (real Edge Function login, oldest-first knock-off, extras marked, corrections, week lock, role isolation, private photos); cleaned up, zero residue vs snapshot
-- [ ] D10. User tries the staff screens; review, memory, commits; push only after separate go-ahead
+- [x] D10. User tested; review written; committed fa3da9c and pushed 2026-11-06; live bundle confirmed
 
 ## Review (D)
 (to be filled in at the end)
