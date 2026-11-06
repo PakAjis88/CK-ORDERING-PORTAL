@@ -70,6 +70,7 @@ export default function Users({ onAdded }) {
               <select value={form.role} onChange={(e) => setField('role', e.target.value)} className={`${inputCls} bg-white`}>
                 <option value="operator">Operator (full access)</option>
                 <option value="halal">Halal (HMS)</option>
+                <option value="delivery">Delivery staff (daily delivery only)</option>
               </select>
             </label>
           </>

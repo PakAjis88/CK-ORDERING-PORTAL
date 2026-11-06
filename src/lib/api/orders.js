@@ -10,7 +10,7 @@ const ORDER_SELECT = `
     id, product_id, cartons_ordered, is_extra,
     unit_price_snapshot, units_per_carton_snapshot, carton_price_snapshot, line_value,
     product:products(id, code, name, category),
-    delivery_batches(id, batch_no, qty, expiry_date, delivered_date, is_buffer)
+    delivery_batches(id, batch_no, qty, expiry_date, delivered_date, is_buffer, drop_id, is_extra_part)
   )
 `
 

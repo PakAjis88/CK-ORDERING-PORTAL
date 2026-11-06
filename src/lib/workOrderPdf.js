@@ -62,7 +62,7 @@ function drawOrderPage(doc, order) {
       const b2 = (l.delivery_batches || []).find((b) => b.batch_no === 2)
       const all = l.delivery_batches || []
       const extra = all.reduce((s, b) => s + (b.qty || 0), 0) - l.cartons_ordered
-      const buffer = all.filter((b) => b.is_buffer).reduce((s, b) => s + (b.qty || 0), 0)
+      const buffer = all.filter((b) => b.batch_no >= 3).reduce((s, b) => s + (b.qty || 0), 0)
       const remarks = []
       if (buffer > 0) remarks.push(`Buffer ${buffer}`)
       if (extra > 0) remarks.push(`${l.is_extra ? 'Penghantaran Extra' : 'Dihantar Lebih'} +${extra}`)

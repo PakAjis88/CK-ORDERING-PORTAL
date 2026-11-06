@@ -260,7 +260,7 @@ function PdfBtn({ order, label }) {
 // out of scope here).
 function DeliveryLineRow({ l, d, setField, t, onRemoveBuffer }) {
   // buffer cartons (Penghantaran Extra) count toward the line but aren't edited in batch 1/2
-  const buffers = (l.delivery_batches || []).filter((x) => x.is_buffer)
+  const buffers = (l.delivery_batches || []).filter((x) => x.batch_no >= 3)
   const del2 = (Number(d.q1) || 0) + (Number(d.q2) || 0) + bufferQty(l)
   const lnSt = del2 > l.cartons_ordered ? 'x' : del2 === l.cartons_ordered ? 'd' : del2 > 0 ? 'p' : 'o'
   const persistedDelivered = lineDelivered(l)
@@ -308,11 +308,13 @@ function DeliveryLineRow({ l, d, setField, t, onRemoveBuffer }) {
       {buffers.length > 0 && (
         <tr className="bg-violet-50 border-t border-violet-100">
           <td colSpan={9} className="px-4 py-1.5 text-xs text-violet-800">
-            <span className="font-semibold">Penghantaran Extra:</span>{' '}
+            <span className="font-semibold">Penghantaran Extra / delivery staff:</span>{' '}
             {buffers.map((b) => (
               <span key={b.id} className="mr-3 whitespace-nowrap">
                 {b.qty} · {fmtDate(b.delivered_date)}{b.expiry_date ? ` · exp ${fmtDate(b.expiry_date)}` : ''}{' '}
-                <button type="button" onClick={() => onRemoveBuffer(b.id)} className="text-red-600 hover:underline">Remove</button>
+                {b.is_buffer
+                  ? <button type="button" onClick={() => onRemoveBuffer(b.id)} className="text-red-600 hover:underline">Remove</button>
+                  : <span className="text-violet-500">(staff entry{b.is_extra_part ? ', extra' : ''}: change in the Deliveries tab)</span>}
               </span>
             ))}
           </td>

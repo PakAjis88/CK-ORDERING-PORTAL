@@ -10,7 +10,7 @@
 //
 // Request body (JSON):
 //   { kind: 'outlet', email, password, outletCode, outletName }
-//   { kind: 'staff',  email, password, fullName, role: 'operator' | 'halal' }
+//   { kind: 'staff',  email, password, fullName, role: 'operator' | 'halal' | 'delivery' }
 
 import { createClient } from 'npm:@supabase/supabase-js@2'
 
@@ -41,7 +41,7 @@ Deno.serve(async (req) => {
 
   const admin = createClient(url, serviceKey, { auth: { autoRefreshToken: false, persistSession: false } })
 
-  // 2. ...and must be an operator or admin (halal/outlet accounts are refused).
+  // 2. ...and must be an operator or admin (halal/delivery/outlet accounts are refused).
   const { data: me } = await admin.from('user_profiles').select('role').eq('id', user.id).maybeSingle()
   if (!me || !['operator', 'admin'].includes(me.role)) return fail('Only operators can add users', 403)
 
@@ -70,7 +70,7 @@ Deno.serve(async (req) => {
     fullName = outletName
   } else if (kind === 'staff') {
     role = String(body.role ?? '')
-    if (!['operator', 'halal'].includes(role)) return fail('Role must be operator or halal')
+    if (!['operator', 'halal', 'delivery'].includes(role)) return fail('Role must be operator, halal or delivery')
     fullName = String(body.fullName ?? '').trim()
     if (!fullName) return fail('Enter the person\'s name')
   } else {

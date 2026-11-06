@@ -1,7 +1,7 @@
 import { supabase } from '../supabaseClient'
 
 // kind 'outlet': { email, password, outletCode, outletName }
-// kind 'staff':  { email, password, fullName, role }  (role: 'operator' | 'halal')
+// kind 'staff':  { email, password, fullName, role }  (role: 'operator' | 'halal' | 'delivery')
 export async function createUser(kind, fields) {
   const { data, error } = await supabase.functions.invoke('create-user', { body: { kind, ...fields } })
   if (error) {

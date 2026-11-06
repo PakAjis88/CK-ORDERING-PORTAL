@@ -14,6 +14,7 @@ import Production from './Production'
 import Hms from './hms/Hms'
 import Users from './Users'
 import RawMaterialsTab from './RawMaterialsTab'
+import Deliveries from './Deliveries'
 
 export default function OperatorHome() {
   const { t } = useT()
@@ -52,6 +53,7 @@ export default function OperatorHome() {
           tabs={[
             { id: 'orders', label: t('tabOrdersFulfil') },
             { id: 'stock', label: t('tabStockTracker') },
+            { id: 'deliveries', label: t('tabDeliveries') },
             { id: 'catalogue', label: t('tabCatalogue') },
             { id: 'production', label: t('tabProduction') },
             ...(profile.role === 'halal' ? [] : [{ id: 'materials', label: t('tabRawMaterials') }]),
@@ -60,6 +62,7 @@ export default function OperatorHome() {
           ]}
         />
         {tab === 'orders' && <OrdersDashboard now={now} orders={orders} outlets={outlets} products={products} onChanged={refreshOrders} />}
+        {tab === 'deliveries' && <Deliveries outlets={outlets} onChanged={refreshOrders} />}
         {tab === 'stock' && <StockTracker outlets={outlets} products={products} />}
         {tab === 'catalogue' && <Catalogue products={products} rawMaterials={rawMaterials} onChanged={refreshProducts} onMaterialsChanged={refreshMaterials} />}
         {tab === 'production' && <Production orders={orders} />}

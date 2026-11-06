@@ -85,3 +85,34 @@ Approved plan: new raw materials get their code automatically; ONE shared "Carto
 - **Checked:** auto-code logic on 5 cases; lint + build clean; live data verified read-only afterwards (9 materials, 0 old boxes, 5 recipes on the new box, Cashew RM 37.64 per carton).
 - **Notes:** the Cashew box line was 0.03 per unit (0.9 box per carton) and is now 1 per carton. Kuah Rojak shows RM 1.64 per carton (box only) until its other ingredients are added.
 
+
+---
+
+# Todo — Delivery staff role (2026-11-06)
+
+Approved plan: new `delivery` role with a simple screen (outlet -> products/cartons/expiry -> one photo per outlet drop -> confirm), oldest-order-first knock-off with extras marked, corrections limited to the current Mon-Sun week for staff (operators/admins/HMS any time), Excel + PDF delivery log. Plan file: `.claude/plans/should-we-disable-the-radiant-dragonfly.md`.
+
+## Steps
+- [x] D1. Checklist
+- [x] D2. Fresh read-only snapshot (post-backfill)
+- [x] D3. `supabase/delivery_staff_setup.sql` (role, `delivery_drops`, batch columns, RPCs, private photo bucket) + `rollback_delivery_staff.sql`; mirror in `schema.sql`
+- [x] D4. USER ran delivery_staff_setup.sql (2026-11-06)
+- [x] D5a. Edge Function `create-user` accepts role `delivery` (code done)
+- [x] D5b. USER redeployed the Edge Function (verified: accepts role delivery)
+- [x] D6. Front-end data layer: `api/deliveries.js` (RPCs, photo compress/upload, signed URLs), `deliveryReport.js` (Excel + PDF), `orderStatus.js` bufferQty widened
+- [x] D7. Staff UI `pages/delivery/DeliveryHome.jsx` (new delivery wizard, this week, report), App.jsx routing/role homes, Users form role option, operator Deliveries tab, i18n
+- [x] D8. Lint + build
+- [x] D9. Live tests 63/63 passed (real Edge Function login, oldest-first knock-off, extras marked, corrections, week lock, role isolation, private photos); cleaned up, zero residue vs snapshot
+- [ ] D10. User tries the staff screens; review, memory, commits; push only after separate go-ahead
+
+## Review (D)
+(to be filled in at the end)
+
+## Pre-push hardening (2026-11-06)
+- [x] H1. Found: completion date moved forward by later extra deliveries (live bug in `recompute_order`; seen on sandbox order CK-2610-023). Fixed in `delivery_staff_setup.sql` (also `buffer_delivery_setup.sql`, `schema.sql`)
+- [x] H2. Reports could silently stop at 1000 rows (server cap): `listDeliveries` now pages; stable ordering in `list_deliveries`
+- [x] H3. Two phones saving for the same outlet at once: per-outlet advisory lock in `record_staff_delivery` / `correct_delivery_entry`
+- [x] H4. Indexes on `delivery_drops`; cap of 60 products per delivery; photo file names restricted to `<uuid>.jpg`
+- [x] H5. Photo compress fallback for older iPhones; stale-response guard in the log; Excel/PDF code loaded only when asked (main bundle 325 -> 309 kB gzip)
+- [x] H6. USER re-ran `delivery_staff_setup.sql` (2026-11-06)
+- [x] H7. Re-tested 29/29: completion date kept, two phones at once (owed cartons knocked off once), 1,500+ rows paged (server cap of 1000 confirmed; ~190 ms/page), 13-product save 255 ms, correction 48 ms, bucket name rules, regression; cleaned up (counts back to before the test)

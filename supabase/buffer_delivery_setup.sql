@@ -30,7 +30,7 @@ language plpgsql security definer set search_path = public as $$
 declare
   v_order orders;
   v_all_full boolean;
-  v_max_delivered_date date;
+  v_completed date;
 begin
   update order_lines ol
     set line_value = greatest(
@@ -44,13 +44,26 @@ begin
     where ol.order_id = p_order_id
       and coalesce((select sum(db.qty) from delivery_batches db where db.order_line_id = ol.id), 0) < ol.cartons_ordered
   ) into v_all_full;
-  select max(db.delivered_date) into v_max_delivered_date
-    from delivery_batches db join order_lines ol on ol.id = db.order_line_id
-    where ol.order_id = p_order_id;
+
+  -- The order was completed on the day its LAST ordered line reached the ordered quantity.
+  -- Extra cartons delivered afterwards (buffer, Dihantar Lebih) must not move that date.
+  select max(line_done) into v_completed
+  from (
+    select (
+      select min(x.d) from (
+        select db.delivered_date d,
+               sum(db.qty) over (order by db.delivered_date, db.batch_no rows unbounded preceding) cum
+        from delivery_batches db where db.order_line_id = ol.id
+      ) x
+      where x.cum >= ol.cartons_ordered
+    ) as line_done
+    from order_lines ol
+    where ol.order_id = p_order_id and ol.cartons_ordered > 0
+  ) t;
 
   update orders
     set total = coalesce((select sum(line_value) from order_lines where order_id = p_order_id), 0),
-        completed_date = case when v_all_full then v_max_delivered_date else null end
+        completed_date = case when v_all_full then v_completed else null end
     where id = p_order_id
     returning * into v_order;
 
