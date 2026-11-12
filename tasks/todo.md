@@ -147,4 +147,4 @@ Approved plan: gallery photo choice; a delivery for an outlet with no order auto
 - [x] R3. Lint + build
 - [x] R4. USER re-ran `delivery_staff_setup.sql` ONCE (covers the earlier no-order work too)
 - [x] R5. Live tests 39/39 (gallery switch + who can change it, preview rules incl. cancelled order / no order / mixed lines, preview writes nothing and matches the save, no-order auto orders: one per outlet per day, new day new order, correction/removal clean-up, operator button with and without orders, dashboard query); order-number counter restored; no test data left
-- [ ] R6. User tries it; review; commit; push only after separate go-ahead
+- [x] R6. User tested (gallery, extra pop-up, switch); MBG034 sandbox cleared; committed 53f55b1 and pushed 2026-11-12; live bundle confirmed
