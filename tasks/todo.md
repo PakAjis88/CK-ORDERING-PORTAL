@@ -116,3 +116,35 @@ Approved plan: new `delivery` role with a simple screen (outlet -> products/cart
 - [x] H5. Photo compress fallback for older iPhones; stale-response guard in the log; Excel/PDF code loaded only when asked (main bundle 325 -> 309 kB gzip)
 - [x] H6. USER re-ran `delivery_staff_setup.sql` (2026-11-06)
 - [x] H7. Re-tested 29/29: completion date kept, two phones at once (owed cartons knocked off once), 1,500+ rows paged (server cap of 1000 confirmed; ~190 ms/page), 13-product save 255 ms, correction 48 ms, bucket name rules, regression; cleaned up (counts back to before the test)
+
+---
+
+# Todo — Delivery staff: gallery photos + deliveries with no order (2026-11-12)
+
+Approved plan: gallery photo choice; a delivery for an outlet with no order auto-creates an extra order (charged at carton price, one per outlet per day); same for the operator's Penghantaran Extra button. Plan file: `.claude/plans/should-we-disable-the-radiant-dragonfly.md`.
+
+## Steps
+- [x] G1. Checklist; roadmap saved to memory
+- [x] G2. Read-only snapshot
+- [x] G3. SQL in `delivery_staff_setup.sql` (+ `schema.sql` mirror, rollback update): `orders.auto_extra`, `_extra_target_order`, staff allocator, operator buffer function, correct cleanup, recompute completed date
+- [x] G4. Front-end: gallery button; "new order created" notes; "No order" tag; `auto_extra` in order select; i18n
+- [x] G5. Lint + build
+- [ ] G6. USER re-runs `delivery_staff_setup.sql`
+- [ ] G7. Live tests on a disposable outlet; clean up; compare to snapshot
+- [ ] G8. User tries it; review, commit; push only after separate go-ahead
+
+## Review (G, round 2 and 3)
+
+- **What changed:** (1) delivery staff can choose a photo from the gallery as well as the camera; an operator/admin can switch that off and on for all staff (HMS, staff and outlet logins cannot); (2) a delivery to an outlet with no order auto-creates an extra order (CK-YYMM-### number, flagged auto_extra, charged at carton price, one per outlet per day, tagged No order on the dashboard), for the staff screen and the operator Penghantaran Extra button; (3) before saving, staff get a pop-up (Item ini dihantar lebih/ekstra tanpa order dari outlet) listing extra or unordered items, powered by a read-only preview in the database.
+- **Database:** delivery_staff_setup.sql re-run 2026-11-12 (sections 8-11 are new); rollback_delivery_staff.sql restores the original operator functions; schema.sql mirror regenerated.
+- **Tested:** 39 live checks on disposable outlets; no test data left; tests returned the order numbers they used.
+- **Notes:** the gallery switch hides the button but the server cannot tell camera from gallery photos; an auto order consumes a real order number and appears in the outlet's My Orders; the earlier test run of N13 used a product that was owed, so it was re-run correctly.
+
+
+## Round 3 additions (2026-11-12): gallery switch + "dihantar lebih/ekstra" pop-up
+- [x] R1. SQL section 10 (gallery switch, operator/admin only) + section 11 (`preview_staff_delivery`) in `delivery_staff_setup.sql`; rollback + schema mirror
+- [x] R2. `api/deliveries.js` (3 functions); `DeliveryHome.jsx`, `NewDelivery.jsx` (switch + pre-save pop-up), operator `Deliveries.jsx` switch card; i18n
+- [x] R3. Lint + build
+- [x] R4. USER re-ran `delivery_staff_setup.sql` ONCE (covers the earlier no-order work too)
+- [x] R5. Live tests 39/39 (gallery switch + who can change it, preview rules incl. cancelled order / no order / mixed lines, preview writes nothing and matches the save, no-order auto orders: one per outlet per day, new day new order, correction/removal clean-up, operator button with and without orders, dashboard query); order-number counter restored; no test data left
+- [ ] R6. User tries it; review; commit; push only after separate go-ahead

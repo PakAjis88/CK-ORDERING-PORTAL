@@ -102,3 +102,27 @@ export async function signedPhotoUrl(path) {
   if (error) throw error
   return data.signedUrl
 }
+
+// May delivery staff pick a photo from the gallery? One switch for everyone; only an operator can change it.
+export async function getGalleryEnabled() {
+  const { data, error } = await supabase.rpc('delivery_gallery_enabled')
+  if (error) throw error
+  return data
+}
+
+export async function setGalleryEnabled(enabled) {
+  const { error } = await supabase.rpc('set_delivery_gallery', { p_enabled: enabled })
+  if (error) throw error
+}
+
+// Read-only check before saving: which cartons are extra (not ordered / more than ordered)?
+// lines: [{ productId, cartons }]. Returns [{ product, cartons, ordered, owed, extra, kind }]
+// where kind is null (nothing extra), 'no_order', 'penghantaran_extra' or 'dihantar_lebih'.
+export async function previewStaffDelivery(outletId, lines) {
+  const { data, error } = await supabase.rpc('preview_staff_delivery', {
+    p_outlet_id: outletId,
+    p_lines: lines.map((l) => ({ product_id: l.productId, cartons: l.cartons })),
+  })
+  if (error) throw error
+  return data
+}

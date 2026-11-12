@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useT } from '../../lib/i18n'
 import { listOutlets } from '../../lib/api/outlets'
 import { listProducts } from '../../lib/api/products'
-import { klToday, klWeekStart } from '../../lib/api/deliveries'
+import { klToday, klWeekStart, getGalleryEnabled } from '../../lib/api/deliveries'
 import Header from '../../components/Header'
 import NewDelivery from './NewDelivery'
 import DeliveryLog from './DeliveryLog'
@@ -15,12 +15,14 @@ export default function DeliveryHome() {
   const [tab, setTab] = useState('new')
   const [outlets, setOutlets] = useState([])
   const [products, setProducts] = useState([])
+  const [galleryOn, setGalleryOn] = useState(false)
   const [loading, setLoading] = useState(true)
   const today = klToday()
   const [filters, setFilters] = useState({ from: `${today.slice(0, 8)}01`, to: today, outletId: '' })
 
   useEffect(() => {
-    Promise.all([listOutlets(), listProducts()]).then(([o, p]) => { setOutlets(o); setProducts(p); setLoading(false) })
+    // if the gallery switch cannot be read, play safe: camera only
+    Promise.all([listOutlets(), listProducts(), getGalleryEnabled().catch(() => false)]).then(([o, p, g]) => { setOutlets(o); setProducts(p); setGalleryOn(g); setLoading(false) })
   }, [])
 
   const tabs = [['new', t('dlTabNew')], ['week', t('dlTabWeek')], ['report', t('dlTabReport')]]
@@ -44,7 +46,7 @@ export default function DeliveryHome() {
           <div className="text-center text-slate-400 py-10">…</div>
         ) : (
           <>
-            {tab === 'new' && <NewDelivery outlets={outlets} products={products} />}
+            {tab === 'new' && <NewDelivery outlets={outlets} products={products} galleryEnabled={galleryOn} />}
             {tab === 'week' && (
               <div>
                 <p className="text-xs text-slate-500 mb-3">{t('dlWeekHint')}</p>

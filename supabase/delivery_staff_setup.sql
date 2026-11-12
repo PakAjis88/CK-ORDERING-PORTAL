@@ -56,7 +56,11 @@ begin
 
   update orders
     set total = coalesce((select sum(line_value) from order_lines where order_id = p_order_id), 0),
-        completed_date = case when v_all_full then v_completed else null end
+        -- an order with no ordered lines (auto-created for a delivery without an order) completes on its delivery day
+        completed_date = case when v_all_full then coalesce(v_completed, (
+                               select max(db.delivered_date) from delivery_batches db
+                               join order_lines ol on ol.id = db.order_line_id where ol.order_id = p_order_id
+                             )) else null end
     where id = p_order_id
     returning * into v_order;
 
@@ -120,6 +124,35 @@ create index if not exists idx_delivery_batches_drop on delivery_batches(drop_id
 create index if not exists idx_delivery_drops_date on delivery_drops(delivered_date);
 create index if not exists idx_delivery_drops_outlet on delivery_drops(outlet_id, delivered_date);
 
+-- Orders created automatically for a delivery to an outlet that has no order
+alter table orders add column if not exists auto_extra boolean not null default false;
+
+-- Internal: where extra cartons go. The outlet's latest non-cancelled order dated on/before
+-- the delivery date. If there is none, or the latest is an auto-created order from an
+-- EARLIER day (so a past day's total never changes), a new auto order is created for the
+-- delivery day (normal CK-YYMM-### number, charged like any extra).
+create or replace function _extra_target_order(p_outlet_id uuid, p_date date)
+returns orders
+language plpgsql security definer set search_path = public as $$
+declare
+  v_order orders;
+begin
+  select * into v_order from orders
+    where outlet_id = p_outlet_id and not cancelled and order_date <= p_date
+    order by order_date desc, created_at desc
+    limit 1;
+  if found and not (v_order.auto_extra and v_order.order_date < p_date) then
+    return v_order;
+  end if;
+
+  insert into orders (order_no, outlet_id, order_date, note, auto_extra, created_by)
+  values (next_order_no(p_date), p_outlet_id, p_date, 'Delivery without an order (auto-created)', true, auth.uid())
+  returning * into v_order;
+  return v_order;
+end;
+$$;
+revoke execute on function _extra_target_order(uuid, date) from public, anon, authenticated;
+
 -- 3. Internal: allocate ONE product entry. Returns where the cartons went + touched orders.
 create or replace function _allocate_staff_entry(
   p_outlet_id uuid, p_product_id uuid, p_cartons integer, p_expiry date, p_date date, p_drop_id uuid
@@ -142,14 +175,6 @@ declare
 begin
   select * into v_product from products where id = p_product_id and active;
   if not found then raise exception 'Unknown or inactive product'; end if;
-
-  select * into v_latest from orders
-    where outlet_id = p_outlet_id and not cancelled and order_date <= p_date
-    order by order_date desc, created_at desc
-    limit 1;
-  if not found then
-    raise exception 'This outlet has no order on or before that date to attach the delivery to';
-  end if;
 
   -- knock off what is still owed: OLDEST order first
   for v_ol in
@@ -175,13 +200,14 @@ begin
     v_left := v_left - v_take;
   end loop;
 
-  -- leftover: beyond everything owed -> extra on the latest order
+  -- leftover: beyond everything owed -> extra on the latest order (or a new auto order if the outlet has none)
   if v_left > 0 then
+    v_latest := _extra_target_order(p_outlet_id, p_date);
     select * into v_ol from order_lines
       where order_id = v_latest.id and product_id = p_product_id
       order by created_at limit 1;
     if found then
-      v_kind := 'dihantar_lebih';
+      v_kind := case when v_ol.is_extra then 'penghantaran_extra' else 'dihantar_lebih' end;
     else
       insert into order_lines (
         order_id, product_id, cartons_ordered,
@@ -199,7 +225,9 @@ begin
     insert into delivery_batches (order_line_id, batch_no, qty, expiry_date, delivered_date, recorded_by, drop_id, is_extra_part)
     values (v_ol.id, v_batch_no, v_left, p_expiry, p_date, auth.uid(), p_drop_id, true);
 
-    v_extra := jsonb_build_object('order_no', v_latest.order_no, 'cartons', v_left, 'kind', v_kind);
+    v_extra := jsonb_build_object(
+      'order_no', v_latest.order_no, 'cartons', v_left, 'kind', v_kind,
+      'new_order', (v_latest.auto_extra and v_latest.created_at = now()));
     v_touched := v_touched || to_jsonb(v_latest.id::text);
   end if;
 
@@ -324,6 +352,11 @@ begin
     end loop;
   end if;
 
+  -- an auto-created order left with no lines is just clutter (its number is skipped)
+  delete from orders o
+    where o.id = any(v_orders) and o.auto_extra
+      and not exists (select 1 from order_lines ol where ol.order_id = o.id);
+
   foreach v_id in array v_orders loop
     perform recompute_order(v_id);
   end loop;
@@ -396,3 +429,277 @@ create policy "delivery photos staff read" on storage.objects for select
 drop policy if exists "delivery photos operator delete" on storage.objects;
 create policy "delivery photos operator delete" on storage.objects for delete
   using (bucket_id = 'delivery-photos' and public.is_operator());
+
+-- 8. Penghantaran Extra (operator button): same, but an outlet with no order gets an auto-created
+-- extra order instead of an error. Replaces the function from buffer_delivery_setup.sql; the only
+-- changes are where leftover cartons land (_extra_target_order) and the new_order flag.
+create or replace function record_buffer_delivery(p_outlet_id uuid, p_delivered_date date, p_lines jsonb)
+returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare
+  v_date date := coalesce(p_delivered_date, current_date);
+  v_line jsonb;
+  v_product products%rowtype;
+  v_cartons integer;
+  v_expiry date;
+  v_left integer;
+  v_owed integer;
+  v_take integer;
+  v_batch_no integer;
+  v_ol order_lines%rowtype;
+  v_latest orders;
+  v_order_no text;
+  v_kind text;
+  v_knocked jsonb;
+  v_extra jsonb;
+  v_touched uuid[] := '{}';
+  v_summary jsonb := '[]'::jsonb;
+  v_id uuid;
+begin
+  if not is_operator() then
+    raise exception 'Only operators can record deliveries';
+  end if;
+  if not exists (select 1 from outlets where id = p_outlet_id) then
+    raise exception 'Outlet not found';
+  end if;
+  if v_date > current_date then
+    raise exception 'Delivery date cannot be in the future';
+  end if;
+  if p_lines is null or jsonb_array_length(p_lines) = 0 then
+    raise exception 'Add at least one item';
+  end if;
+
+  for v_line in select * from jsonb_array_elements(p_lines)
+  loop
+    v_cartons := (v_line->>'cartons')::integer;
+    if v_cartons is null or v_cartons <= 0 then
+      raise exception 'Cartons must be more than 0';
+    end if;
+    select * into v_product from products
+      where id = (v_line->>'product_id')::uuid and active;
+    if not found then
+      raise exception 'Unknown or inactive product %', v_line->>'product_id';
+    end if;
+    v_expiry := nullif(v_line->>'expiry', '')::date;
+    v_left := v_cartons;
+    v_knocked := '[]'::jsonb;
+    v_extra := null;
+
+    -- knock off what is still owed: newest order first, then older
+    for v_ol in
+      select ol.* from order_lines ol join orders o on o.id = ol.order_id
+      where o.outlet_id = p_outlet_id and not o.cancelled and o.order_date <= v_date
+        and ol.product_id = v_product.id
+      order by o.order_date desc, o.created_at desc, ol.created_at
+    loop
+      exit when v_left <= 0;
+      v_owed := v_ol.cartons_ordered
+        - coalesce((select sum(db.qty) from delivery_batches db where db.order_line_id = v_ol.id), 0);
+      continue when v_owed <= 0;
+      v_take := least(v_left, v_owed);
+
+      select greatest(2, coalesce(max(batch_no), 0)) + 1 into v_batch_no
+        from delivery_batches where order_line_id = v_ol.id;
+      insert into delivery_batches (order_line_id, batch_no, qty, expiry_date, delivered_date, recorded_by, is_buffer)
+      values (v_ol.id, v_batch_no, v_take, v_expiry, v_date, auth.uid(), true);
+
+      select order_no into v_order_no from orders where id = v_ol.order_id;
+      v_knocked := v_knocked || jsonb_build_object('order_no', v_order_no, 'cartons', v_take, 'was_owed', v_owed);
+      if not (v_ol.order_id = any(v_touched)) then v_touched := v_touched || v_ol.order_id; end if;
+      v_left := v_left - v_take;
+    end loop;
+
+    -- leftover: beyond everything owed, so it is extra on the latest order
+    if v_left > 0 then
+      -- the outlet's latest order, or a new auto order when it has none
+      v_latest := _extra_target_order(p_outlet_id, v_date);
+      select * into v_ol from order_lines
+        where order_id = v_latest.id and product_id = v_product.id
+        order by created_at limit 1;
+      if found then
+        v_kind := case when v_ol.is_extra then 'penghantaran_extra' else 'dihantar_lebih' end;
+      else
+        insert into order_lines (
+          order_id, product_id, cartons_ordered,
+          unit_price_snapshot, units_per_carton_snapshot, carton_price_snapshot, line_value, is_extra
+        ) values (
+          v_latest.id, v_product.id, 0,
+          v_product.unit_price, v_product.units_per_carton,
+          v_product.unit_price * v_product.units_per_carton, 0, true
+        ) returning * into v_ol;
+        v_kind := 'penghantaran_extra';
+      end if;
+
+      select greatest(2, coalesce(max(batch_no), 0)) + 1 into v_batch_no
+        from delivery_batches where order_line_id = v_ol.id;
+      insert into delivery_batches (order_line_id, batch_no, qty, expiry_date, delivered_date, recorded_by, is_buffer)
+      values (v_ol.id, v_batch_no, v_left, v_expiry, v_date, auth.uid(), true);
+
+      v_extra := jsonb_build_object(
+        'order_no', v_latest.order_no, 'cartons', v_left, 'kind', v_kind,
+        'new_order', (v_latest.auto_extra and v_latest.created_at = now()));
+      if not (v_latest.id = any(v_touched)) then v_touched := v_touched || v_latest.id; end if;
+    end if;
+
+    v_summary := v_summary || jsonb_build_object(
+      'product', v_product.name, 'cartons', v_cartons, 'knocked_off', v_knocked, 'extra', v_extra);
+  end loop;
+
+  foreach v_id in array v_touched loop
+    perform recompute_order(v_id);
+  end loop;
+
+  return v_summary;
+end;
+$$;
+grant execute on function record_buffer_delivery(uuid, date, jsonb) to authenticated;
+
+-- 9. Removing a Penghantaran Extra entry also removes an auto-created order that ends up empty.
+create or replace function remove_buffer_batch(p_batch_id uuid)
+returns orders
+language plpgsql security definer set search_path = public as $$
+declare
+  v_b delivery_batches;
+  v_ol order_lines%rowtype;
+begin
+  if not is_operator() then
+    raise exception 'Only operators can record deliveries';
+  end if;
+  select * into v_b from delivery_batches where id = p_batch_id;
+  if not found then raise exception 'Delivery not found'; end if;
+  if not v_b.is_buffer then
+    raise exception 'Only buffer deliveries can be removed here';
+  end if;
+  select * into v_ol from order_lines where id = v_b.order_line_id;
+
+  delete from delivery_batches where id = p_batch_id;
+  if v_ol.is_extra and not exists (select 1 from delivery_batches where order_line_id = v_ol.id) then
+    delete from order_lines where id = v_ol.id;
+  end if;
+
+  -- an auto-created order left with no lines is just clutter (its number is skipped)
+  delete from orders o
+    where o.id = v_ol.order_id and o.auto_extra
+      and not exists (select 1 from order_lines x where x.order_id = o.id);
+
+  return recompute_order(v_ol.order_id);
+end;
+$$;
+grant execute on function remove_buffer_batch(uuid) to authenticated;
+
+-- 10. Gallery switch: may delivery staff pick a photo from the phone gallery (instead of taking one)?
+-- One switch for everyone, stored in app_settings (no row = On). Only an operator or admin can change it.
+create or replace function delivery_gallery_enabled()
+returns boolean
+language plpgsql stable security definer set search_path = public as $$
+begin
+  if not (is_delivery() or is_operator()) then
+    raise exception 'Only delivery staff and operators can read this setting';
+  end if;
+  return coalesce((select (value->>'enabled')::boolean from app_settings where key = 'delivery_gallery'), true);
+end;
+$$;
+grant execute on function delivery_gallery_enabled() to authenticated;
+
+create or replace function set_delivery_gallery(p_enabled boolean)
+returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  if not exists (select 1 from user_profiles where id = auth.uid() and role in ('operator', 'admin')) then
+    raise exception 'Only an operator can change this';
+  end if;
+  insert into app_settings (key, value, updated_by)
+  values ('delivery_gallery', jsonb_build_object('enabled', p_enabled), auth.uid())
+  on conflict (key) do update
+    set value = excluded.value, updated_at = now(), updated_by = excluded.updated_by;
+end;
+$$;
+grant execute on function set_delivery_gallery(boolean) to authenticated;
+
+-- 11. Read-only check shown BEFORE saving: which of these cartons are extra (not ordered, or more
+-- than the outlet still owes)? Same rules as record_staff_delivery(), writes nothing.
+-- p_lines: [{"product_id": uuid, "cartons": int}]. Returns one object per line:
+-- {product_id, product, cartons, ordered, owed, extra, kind}; kind is null when nothing is extra,
+-- else 'no_order' (outlet has no order: a new one will be created), 'penghantaran_extra'
+-- (product not on the order) or 'dihantar_lebih' (more than ordered).
+create or replace function preview_staff_delivery(p_outlet_id uuid, p_lines jsonb)
+returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+declare
+  v_date date := kl_today();
+  v_line jsonb;
+  v_pid uuid;
+  v_cartons integer;
+  v_product products%rowtype;
+  v_latest orders;
+  v_has_order boolean;
+  v_ordered integer;
+  v_owed integer;
+  v_extra integer;
+  v_kind text;
+  v_on_latest order_lines%rowtype;
+  v_result jsonb := '[]'::jsonb;
+begin
+  if not (is_delivery() or is_operator()) then
+    raise exception 'Only delivery staff and operators can check deliveries';
+  end if;
+  if not exists (select 1 from outlets where id = p_outlet_id) then
+    raise exception 'Outlet not found';
+  end if;
+  if p_lines is null or jsonb_typeof(p_lines) <> 'array' or jsonb_array_length(p_lines) = 0 then
+    raise exception 'Add at least one product';
+  end if;
+  if jsonb_array_length(p_lines) > 60 then
+    raise exception 'Too many products in one delivery';
+  end if;
+
+  select * into v_latest from orders
+    where outlet_id = p_outlet_id and not cancelled and order_date <= v_date
+    order by order_date desc, created_at desc
+    limit 1;
+  v_has_order := found;
+
+  for v_line in select * from jsonb_array_elements(p_lines)
+  loop
+    v_pid := (v_line->>'product_id')::uuid;
+    v_cartons := (v_line->>'cartons')::integer;
+    if v_cartons is null or v_cartons <= 0 then
+      raise exception 'Cartons must be more than 0';
+    end if;
+    select * into v_product from products where id = v_pid and active;
+    if not found then raise exception 'Unknown or inactive product'; end if;
+
+    select coalesce(sum(ol.cartons_ordered), 0),
+           coalesce(sum(greatest(0, ol.cartons_ordered
+             - coalesce((select sum(db.qty) from delivery_batches db where db.order_line_id = ol.id), 0))), 0)
+      into v_ordered, v_owed
+      from order_lines ol join orders o on o.id = ol.order_id
+      where o.outlet_id = p_outlet_id and not o.cancelled and o.order_date <= v_date
+        and ol.product_id = v_pid;
+
+    v_extra := greatest(0, v_cartons - v_owed);
+    v_kind := null;
+    if v_extra > 0 then
+      if not v_has_order or (v_latest.auto_extra and v_latest.order_date < v_date) then
+        v_kind := 'no_order';
+      else
+        select * into v_on_latest from order_lines
+          where order_id = v_latest.id and product_id = v_pid
+          order by created_at limit 1;
+        if found and not v_on_latest.is_extra then
+          v_kind := 'dihantar_lebih';
+        else
+          v_kind := 'penghantaran_extra';
+        end if;
+      end if;
+    end if;
+
+    v_result := v_result || jsonb_build_object(
+      'product_id', v_pid, 'product', v_product.name, 'cartons', v_cartons,
+      'ordered', v_ordered, 'owed', v_owed, 'extra', v_extra, 'kind', v_kind);
+  end loop;
+
+  return v_result;
+end;
+$$;
+grant execute on function preview_staff_delivery(uuid, jsonb) to authenticated;

@@ -56,6 +56,7 @@ export default function BufferDeliveryModal({ outlets, products, initialOutletId
                 {r.extra && (
                   <div className="text-xs text-violet-700 font-medium mt-1">
                     {EXTRA_LABEL[r.extra.kind]} +{r.extra.cartons} on {r.extra.order_no} (charged)
+                    {r.extra.new_order && ' · new order created: this outlet had no order'}
                   </div>
                 )}
               </div>

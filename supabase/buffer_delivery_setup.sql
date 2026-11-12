@@ -9,6 +9,9 @@
 -- Paste into the Supabase SQL Editor and run once. Safe to re-run.
 -- NOTE: this does NOT change any existing order's total. Run
 -- buffer_delivery_backfill.sql separately only if you want past over-deliveries charged.
+-- LATER CHANGE: for an outlet with NO order, delivery_staff_setup.sql (section 8) replaces
+-- record_buffer_delivery() with a version that auto-creates an extra order instead of
+-- failing. Run that file after this one; do not re-run this file on its own afterwards.
 
 -- 1. Batches: allow more than 2 per line (buffer batches use 3, 4, ...) + flag
 alter table delivery_batches drop constraint if exists delivery_batches_batch_no_check;

@@ -1,14 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useT } from '../../lib/i18n'
 import ExpiryDateInput, { isValidExpiry } from '../../components/ExpiryDateInput'
-import { compressPhoto, recordStaffDelivery } from '../../lib/api/deliveries'
+import { compressPhoto, recordStaffDelivery, previewStaffDelivery, getGalleryEnabled } from '../../lib/api/deliveries'
 
 const blankItem = () => ({ productId: '', cartons: 1, expiry: '' })
 const ISO = /^\d{4}-\d{2}-\d{2}$/
 const bigBtn = 'w-full rounded-xl text-base font-semibold py-4 disabled:opacity-40'
 
-export default function NewDelivery({ outlets, products }) {
+export default function NewDelivery({ outlets, products, galleryEnabled = true }) {
   const { t } = useT()
+  const [galleryOn, setGalleryOn] = useState(galleryEnabled)
+  const [warn, setWarn] = useState(null) // pre-save pop-up: the extra items, or null when closed
   const [step, setStep] = useState(0) // 0 outlet, 1 products, 2 photo, 3 review
   const [outletId, setOutletId] = useState('')
   const [search, setSearch] = useState('')
@@ -18,8 +20,15 @@ export default function NewDelivery({ outlets, products }) {
   const [error, setError] = useState('')
   const [result, setResult] = useState(null)
   const fileRef = useRef(null)
+  const galleryRef = useRef(null)
 
   useEffect(() => () => { if (photo?.url) URL.revokeObjectURL(photo.url) }, [photo])
+
+  // re-read the gallery switch whenever the photo step opens, so an operator turning it off applies at once
+  useEffect(() => {
+    if (step !== 2) return
+    getGalleryEnabled().then(setGalleryOn).catch(() => {})
+  }, [step])
 
   const outlet = outlets.find((o) => o.id === outletId)
   const productById = useMemo(() => Object.fromEntries(products.map((p) => [p.id, p])), [products])
@@ -41,8 +50,9 @@ export default function NewDelivery({ outlets, products }) {
     }
   }
 
-  const confirm = async () => {
+  const save = async () => {
     setError('')
+    setWarn(null)
     setSaving(true)
     try {
       setResult(await recordStaffDelivery({
@@ -54,6 +64,25 @@ export default function NewDelivery({ outlets, products }) {
     } finally {
       setSaving(false)
     }
+  }
+
+  // Confirm: first ask the server (read-only) whether anything is extra; if so show the pop-up
+  // and let staff choose Teruskan (save) or Kembali (go back). If the check itself fails, say so
+  // and do not save, so the warning is never skipped silently.
+  const confirm = async () => {
+    setError('')
+    setSaving(true)
+    try {
+      const preview = await previewStaffDelivery(outletId, items.map((x) => ({ productId: x.productId, cartons: Number(x.cartons) })))
+      const extras = preview.filter((p) => p.extra > 0)
+      if (extras.length > 0) { setWarn(extras); return }
+    } catch (err) {
+      setError(err.message)
+      return
+    } finally {
+      setSaving(false)
+    }
+    await save()
   }
 
   const reset = () => {
@@ -73,6 +102,7 @@ export default function NewDelivery({ outlets, products }) {
             {r.extra && (
               <div className="text-xs text-violet-700 font-semibold mt-1">
                 {t(r.extra.kind === 'penghantaran_extra' ? 'dlExtraItem' : 'dlExtraLebih', { c: r.extra.cartons, o: r.extra.order_no })}
+                {r.extra.new_order && <span className="block font-normal text-violet-600">{t('dlNewOrder')}</span>}
               </div>
             )}
           </div>
@@ -154,6 +184,7 @@ export default function NewDelivery({ outlets, products }) {
       {step === 2 && (
         <div className="space-y-3">
           <input ref={fileRef} type="file" accept="image/*" capture="environment" onChange={onPhoto} className="hidden" />
+          <input ref={galleryRef} type="file" accept="image/*" onChange={onPhoto} className="hidden" />
           {photo ? (
             <img src={photo.url} alt="" className="w-full rounded-xl border border-slate-200 max-h-80 object-contain bg-white" />
           ) : (
@@ -162,6 +193,11 @@ export default function NewDelivery({ outlets, products }) {
           <button onClick={() => fileRef.current?.click()} className={`${bigBtn} ${photo ? 'bg-white border border-slate-300 text-slate-700' : 'bg-teal-600 hover:bg-teal-700 text-white'}`}>
             {photo ? t('dlRetake') : t('dlTakePhoto')}
           </button>
+          {galleryOn && (
+            <button onClick={() => galleryRef.current?.click()} className={`${bigBtn} bg-white border border-slate-300 text-slate-700`}>
+              {t('dlGallery')}
+            </button>
+          )}
         </div>
       )}
 
@@ -187,6 +223,31 @@ export default function NewDelivery({ outlets, products }) {
           {step === 1 && <button onClick={() => setStep(2)} disabled={!itemsOk} className={`flex-1 ${bigBtn} bg-teal-600 hover:bg-teal-700 text-white`}>{t('dlNext')}</button>}
           {step === 2 && <button onClick={() => setStep(3)} disabled={!photo} className={`flex-1 ${bigBtn} bg-teal-600 hover:bg-teal-700 text-white`}>{t('dlNext')}</button>}
           {step === 3 && <button onClick={confirm} disabled={saving} className={`flex-1 ${bigBtn} bg-teal-600 hover:bg-teal-700 text-white`}>{saving ? '…' : t('dlConfirm')}</button>}
+        </div>
+      )}
+
+      {warn && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60">
+          <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-5 max-h-[90vh] overflow-y-auto">
+            <div className="text-violet-700 text-lg font-semibold mb-3">⚠ {t('dlExtraWarnTitle')}</div>
+            <div className="space-y-2 mb-4">
+              {warn.map((w) => (
+                <div key={w.product_id} className="bg-violet-50 border border-violet-200 rounded-lg p-3 text-sm">
+                  <div className="font-medium">{w.product} <span className="font-mono text-slate-600">×{w.cartons}</span></div>
+                  <div className="text-xs text-violet-800 mt-0.5">
+                    {w.kind === 'dihantar_lebih'
+                      ? t('dlWarnMore', { o: w.owed, e: w.extra })
+                      : t('dlWarnNotOrdered', { e: w.extra })}
+                  </div>
+                  {w.kind === 'no_order' && <div className="text-xs text-violet-600 mt-0.5">{t('dlNewOrder')}</div>}
+                </div>
+              ))}
+            </div>
+            <div className="flex gap-3">
+              <button onClick={() => setWarn(null)} className="w-1/3 rounded-xl border border-slate-300 bg-white text-slate-700 font-semibold py-3.5">{t('dlGoBack')}</button>
+              <button onClick={save} disabled={saving} className="flex-1 rounded-xl bg-violet-600 hover:bg-violet-700 disabled:opacity-40 text-white font-semibold py-3.5">{saving ? '…' : t('dlContinue')}</button>
+            </div>
+          </div>
         </div>
       )}
     </div>

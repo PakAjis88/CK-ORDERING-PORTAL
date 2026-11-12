@@ -4,7 +4,7 @@ import { supabase } from '../supabaseClient'
 // its product and its delivery batches. RLS scopes rows automatically
 // (outlet sees only its own, operator sees all).
 const ORDER_SELECT = `
-  id, order_no, outlet_id, order_date, cancelled, is_reorder, note, completed_date, total, created_at,
+  id, order_no, outlet_id, order_date, cancelled, is_reorder, auto_extra, note, completed_date, total, created_at,
   outlet:outlets(id, code, name),
   order_lines(
     id, product_id, cartons_ordered, is_extra,

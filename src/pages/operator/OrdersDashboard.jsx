@@ -178,7 +178,7 @@ export default function OrdersDashboard({ now, orders, outlets, products, onChan
               return (
                 <Fragment key={o.id}>
                   <tr className={`border-t border-slate-100 hover:bg-slate-50 ${locked ? 'opacity-50' : 'cursor-pointer'}`} onClick={() => (locked ? null : isOpen ? setExpanded(null) : openRow(o))}>
-                    <Td mono>{o.order_no}{o.is_reorder && <ReorderBadge />}{hasExtra(o) && <span className="ml-1.5 text-[10px] font-sans font-semibold text-violet-700 bg-violet-100 border border-violet-200 rounded px-1.5 py-0.5">Extra</span>}</Td>
+                    <Td mono>{o.order_no}{o.is_reorder && <ReorderBadge />}{hasExtra(o) && <span className="ml-1.5 text-[10px] font-sans font-semibold text-violet-700 bg-violet-100 border border-violet-200 rounded px-1.5 py-0.5">Extra</span>}{o.auto_extra && <span title="Created automatically for a delivery to an outlet with no order" className="ml-1.5 text-[10px] font-sans font-semibold text-slate-600 bg-slate-100 border border-slate-200 rounded px-1.5 py-0.5">No order</span>}</Td>
                     <Td>{o.outlet.name}</Td>
                     <Td>{fmtDate(o.order_date)}</Td>
                     <Td right mono>{o.order_lines.length}</Td>
