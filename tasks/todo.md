@@ -148,3 +148,24 @@ Approved plan: gallery photo choice; a delivery for an outlet with no order auto
 - [x] R4. USER re-ran `delivery_staff_setup.sql` ONCE (covers the earlier no-order work too)
 - [x] R5. Live tests 39/39 (gallery switch + who can change it, preview rules incl. cancelled order / no order / mixed lines, preview writes nothing and matches the save, no-order auto orders: one per outlet per day, new day new order, correction/removal clean-up, operator button with and without orders, dashboard query); order-number counter restored; no test data left
 - [x] R6. User tested (gallery, extra pop-up, switch); MBG034 sandbox cleared; committed 53f55b1 and pushed 2026-11-12; live bundle confirmed
+
+---
+
+# Todo — Pengeluaran tab: one printable sheet per product (2026-11-13)
+
+Approved plan: click a product name in the Production tab to download its own A4 sheet: outlet | qty originally ordered | 4 blank Hantar columns (pre-filled with deliveries already recorded, one date per column) | big bold total of cartons still to produce. One row per outlet. Order-date range on screen drives the table, the summary PDF and the sheets. No database change. Plan file: `.claude/plans/should-we-disable-the-radiant-dragonfly.md`.
+
+## Steps
+- [x] P1. Checklist
+- [x] P2. `src/lib/productionSheets.js` (`productSheet`) + hand-worked check
+- [x] P3. `downloadProductSheetPdf` in `src/lib/productionPdf.js`; sample PDFs (made-up + live data) inspected
+- [x] P4. `Production.jsx`: order-date range (smart default), clickable product names; i18n; lint + build
+- [x] P5. User tried it; committed and pushed 2026-11-13
+
+## Review (P)
+
+- **What changed:** each product name in the Pengeluaran tab downloads its own A4 sheet: outlet | qty originally ordered | four blank Hantar columns (pre-filled with recorded deliveries, one date per column, a + marker when there are more than four dates) | large bold total of cartons still to produce. One row per outlet. A From/To order-date range (default: last 30 days, stretched back to the oldest open order) drives the table, the summary PDF and all sheets; cancelled orders are always left out.
+- **No database change.** New files: productionSheets.js (calculation), productSheet PDF in productionPdf.js; Production.jsx and i18n updated.
+- **Checked:** 11 hand-worked cases pass (two orders per outlet, over-delivery on one order not hiding a shortfall on another, extra-only outlet, cancelled orders, same-day batches, >4 delivery dates); sample PDFs inspected as images (38 outlets, long names, page breaks); live data for one product matched the Production tab row exactly (ordered 136, delivered 98, balance 68).
+- **Notes:** the big total is the balance, as chosen; deliveries recorded after printing do not appear on an already printed sheet; changing the range changes the table numbers (it used to be all-time).
+
