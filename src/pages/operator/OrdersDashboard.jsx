@@ -1,7 +1,7 @@
 import { Fragment, useMemo, useState } from 'react'
 import { useT } from '../../lib/i18n'
 import { fmt, fmtDate, monthKey, monthLabel, dueDate, todayISO } from '../../lib/format'
-import { displayStatus, deliveredCartons, orderedCartons, lineDelivered, hasExtra, bufferQty, STATUS_META } from '../../lib/orderStatus'
+import { displayStatus, deliveredCartons, orderedCartons, lineDelivered, hasExtra, bufferQty, deliverySlots, restQty, STATUS_META } from '../../lib/orderStatus'
 import { recordDelivery, removeBufferBatch } from '../../lib/api/orders'
 import BufferDeliveryModal from './BufferDeliveryModal'
 import { downloadOrderPdf, downloadBatchPdf } from '../../lib/workOrderPdf'
@@ -119,11 +119,11 @@ export default function OrdersDashboard({ now, orders, outlets, products, onChan
       const st = STATUS_EN[displayStatus(o, now)]
       const due = dueDate(o).toISOString().slice(0, 10)
       o.order_lines.forEach((l) => {
-        const b = l.delivery_batches || []
-        const b1 = b.find((x) => x.batch_no === 1), b2 = b.find((x) => x.batch_no === 2)
+        const { slots } = deliverySlots(l) // staff deliveries appear in the Batch columns too
+        const b1 = slots[1], b2 = slots[2]
         out.push([
           o.order_no, `"${o.outlet.name}"`, o.order_date, due, `"${l.product.name}"`, l.cartons_ordered, lineDelivered(l), Math.max(0, l.cartons_ordered - lineDelivered(l)), Math.max(0, lineDelivered(l) - l.cartons_ordered) || '',
-          bufferQty(l) || '', l.is_extra ? 'Yes' : '',
+          restQty(l) || '', l.is_extra ? 'Yes' : '',
           b1?.qty || '', b1?.delivered_date || '', b1?.expiry_date || '', b2?.qty || '', b2?.delivered_date || '', b2?.expiry_date || '',
           Number(l.line_value).toFixed(2), Number(o.total).toFixed(2), st, o.completed_date || '', `"${o.note || ''}"`,
         ].join(','))
@@ -258,9 +258,21 @@ function PdfBtn({ order, label }) {
 // see plan doc for the "known limitation" note on lines with both batches
 // already used but still short (needs the schema's batch_no cap lifted,
 // out of scope here).
+// A delivery-staff quantity shown in a Batch box: read-only, with a small "staf" tag.
+function StaffQty({ qty }) {
+  return (
+    <span className="inline-flex items-center gap-1.5 justify-end" title="Entered by delivery staff. Change it in the Deliveries tab.">
+      <span className="text-[10px] font-semibold text-violet-600 bg-violet-50 border border-violet-200 rounded px-1">staf</span>
+      <span className="font-mono text-sm text-slate-500">{qty}</span>
+    </span>
+  )
+}
+
 function DeliveryLineRow({ l, d, setField, t, onRemoveBuffer }) {
-  // buffer cartons (Penghantaran Extra) count toward the line but aren't edited in batch 1/2
-  const buffers = (l.delivery_batches || []).filter((x) => x.batch_no >= 3)
+  // Ordinary delivery-staff entries fill the free Batch box(es) as locked, read-only values (staffSlot);
+  // `rest` = Penghantaran Extra, staff extras and any further staff batch, shown in the violet line.
+  // All of them count toward the line total via bufferQty (batches 3+), and none is written back on save.
+  const { slots, staffSlot, rest } = deliverySlots(l)
   const del2 = (Number(d.q1) || 0) + (Number(d.q2) || 0) + bufferQty(l)
   const lnSt = del2 > l.cartons_ordered ? 'x' : del2 === l.cartons_ordered ? 'd' : del2 > 0 ? 'p' : 'o'
   const persistedDelivered = lineDelivered(l)
@@ -274,28 +286,40 @@ function DeliveryLineRow({ l, d, setField, t, onRemoveBuffer }) {
         <Td>{l.product.name}</Td>
         <Td right mono>{l.is_extra ? '—' : l.cartons_ordered}</Td>
         <Td right>
-          {b1Locked
-            ? <span className="font-mono text-sm text-slate-500">{d.q1}</span>
-            : <input value={d.q1} onChange={(e) => setField(l.id, 'q1', parseInt(e.target.value.replace(/\D/g, ''), 10) || 0, l.cartons_ordered)} inputMode="numeric" className="w-16 text-right border border-slate-300 rounded-md py-1 px-2 font-mono text-sm" />}
+          {staffSlot[1]
+            ? <StaffQty qty={slots[1].qty} />
+            : b1Locked
+              ? <span className="font-mono text-sm text-slate-500">{d.q1}</span>
+              : <input value={d.q1} onChange={(e) => setField(l.id, 'q1', parseInt(e.target.value.replace(/\D/g, ''), 10) || 0, l.cartons_ordered)} inputMode="numeric" className="w-16 text-right border border-slate-300 rounded-md py-1 px-2 font-mono text-sm" />}
         </Td>
         <Td>
-          {b1Locked
-            ? <span className="font-mono text-xs text-slate-500">{fmtDate(d.dd1)}</span>
-            : <input type="date" value={d.dd1} onChange={(e) => setField(l.id, 'dd1', e.target.value, l.cartons_ordered)} className="border border-slate-300 rounded-md py-1 px-2 font-mono text-xs" />}
+          {staffSlot[1]
+            ? <span className="font-mono text-xs text-slate-500">{fmtDate(slots[1].delivered_date)}</span>
+            : b1Locked
+              ? <span className="font-mono text-xs text-slate-500">{fmtDate(d.dd1)}</span>
+              : <input type="date" value={d.dd1} onChange={(e) => setField(l.id, 'dd1', e.target.value, l.cartons_ordered)} className="border border-slate-300 rounded-md py-1 px-2 font-mono text-xs" />}
         </Td>
         <Td>
-          {b1Locked
-            ? <span className="font-mono text-xs text-slate-500">{fmtDate(d.e1)}</span>
-            : <input type="date" value={d.e1} onChange={(e) => setField(l.id, 'e1', e.target.value, l.cartons_ordered)} className={`border rounded-md py-1 px-2 font-mono text-xs ${(Number(d.q1) || 0) > 0 && !d.e1 ? 'border-amber-300' : 'border-slate-300'}`} />}
+          {staffSlot[1]
+            ? <span className="font-mono text-xs text-slate-500">{fmtDate(slots[1].expiry_date)}</span>
+            : b1Locked
+              ? <span className="font-mono text-xs text-slate-500">{fmtDate(d.e1)}</span>
+              : <input type="date" value={d.e1} onChange={(e) => setField(l.id, 'e1', e.target.value, l.cartons_ordered)} className={`border rounded-md py-1 px-2 font-mono text-xs ${(Number(d.q1) || 0) > 0 && !d.e1 ? 'border-amber-300' : 'border-slate-300'}`} />}
         </Td>
         <Td right>
-          <input value={d.q2} onChange={(e) => setField(l.id, 'q2', parseInt(e.target.value.replace(/\D/g, ''), 10) || 0, l.cartons_ordered)} inputMode="numeric" className={`w-16 text-right border rounded-md py-1 px-2 font-mono text-sm ${isFollowUp ? 'bg-amber-100 border-amber-300' : 'border-slate-300'}`} />
+          {staffSlot[2]
+            ? <StaffQty qty={slots[2].qty} />
+            : <input value={d.q2} onChange={(e) => setField(l.id, 'q2', parseInt(e.target.value.replace(/\D/g, ''), 10) || 0, l.cartons_ordered)} inputMode="numeric" className={`w-16 text-right border rounded-md py-1 px-2 font-mono text-sm ${isFollowUp ? 'bg-amber-100 border-amber-300' : 'border-slate-300'}`} />}
         </Td>
         <Td>
-          <input type="date" value={d.dd2} onChange={(e) => setField(l.id, 'dd2', e.target.value, l.cartons_ordered)} className={`border rounded-md py-1 px-2 font-mono text-xs ${isFollowUp ? 'bg-amber-100 border-amber-300' : 'border-slate-300'}`} />
+          {staffSlot[2]
+            ? <span className="font-mono text-xs text-slate-500">{fmtDate(slots[2].delivered_date)}</span>
+            : <input type="date" value={d.dd2} onChange={(e) => setField(l.id, 'dd2', e.target.value, l.cartons_ordered)} className={`border rounded-md py-1 px-2 font-mono text-xs ${isFollowUp ? 'bg-amber-100 border-amber-300' : 'border-slate-300'}`} />}
         </Td>
         <Td>
-          <input type="date" value={d.e2} onChange={(e) => setField(l.id, 'e2', e.target.value, l.cartons_ordered)} className={`border rounded-md py-1 px-2 font-mono text-xs ${isFollowUp ? 'bg-amber-100 border-amber-300' : ((Number(d.q2) || 0) > 0 && !d.e2 ? 'border-amber-300' : 'border-slate-300')}`} />
+          {staffSlot[2]
+            ? <span className="font-mono text-xs text-slate-500">{fmtDate(slots[2].expiry_date)}</span>
+            : <input type="date" value={d.e2} onChange={(e) => setField(l.id, 'e2', e.target.value, l.cartons_ordered)} className={`border rounded-md py-1 px-2 font-mono text-xs ${isFollowUp ? 'bg-amber-100 border-amber-300' : ((Number(d.q2) || 0) > 0 && !d.e2 ? 'border-amber-300' : 'border-slate-300')}`} />}
         </Td>
         <Td>
           {lnSt === 'd' && <span className="text-xs text-emerald-600 font-medium">✓ {t('lnDelivered')}</span>}
@@ -305,16 +329,16 @@ function DeliveryLineRow({ l, d, setField, t, onRemoveBuffer }) {
           {lnSt === 'o' && <span className="text-xs text-amber-600 font-medium">{t('lnOutstanding')}</span>}
         </Td>
       </tr>
-      {buffers.length > 0 && (
+      {rest.length > 0 && (
         <tr className="bg-violet-50 border-t border-violet-100">
           <td colSpan={9} className="px-4 py-1.5 text-xs text-violet-800">
-            <span className="font-semibold">Penghantaran Extra / delivery staff:</span>{' '}
-            {buffers.map((b) => (
-              <span key={b.id} className="mr-3 whitespace-nowrap">
+            {rest.map((b) => (
+              <span key={b.id} className="mr-4 whitespace-nowrap">
+                <span className="font-semibold">{b.is_buffer ? 'Penghantaran Extra' : b.is_extra_part ? 'Staf (extra)' : 'Staf'}:</span>{' '}
                 {b.qty} · {fmtDate(b.delivered_date)}{b.expiry_date ? ` · exp ${fmtDate(b.expiry_date)}` : ''}{' '}
                 {b.is_buffer
                   ? <button type="button" onClick={() => onRemoveBuffer(b.id)} className="text-red-600 hover:underline">Remove</button>
-                  : <span className="text-violet-500">(staff entry{b.is_extra_part ? ', extra' : ''}: change in the Deliveries tab)</span>}
+                  : <span className="text-violet-500">(change in the Deliveries tab)</span>}
               </span>
             ))}
           </td>

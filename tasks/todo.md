@@ -169,3 +169,24 @@ Approved plan: click a product name in the Production tab to download its own A4
 - **Checked:** 11 hand-worked cases pass (two orders per outlet, over-delivery on one order not hiding a shortfall on another, extra-only outlet, cancelled orders, same-day batches, >4 delivery dates); sample PDFs inspected as images (38 outlets, long names, page breaks); live data for one product matched the Production tab row exactly (ordered 136, delivered 98, balance 68).
 - **Notes:** the big total is the balance, as chosen; deliveries recorded after printing do not appear on an already printed sheet; changing the range changes the table numbers (it used to be all-time).
 
+
+---
+
+# Todo — Staff deliveries shown in the operator's Batch boxes (2026-11-13)
+
+Approved plan: delivery staff's ordinary deliveries fill the free Batch 1 / Batch 2 boxes of the operator's Tempahan & Pemenuhan form, locked and tagged "staf" (qty, date, expiry visible); extras and third+ staff batches stay in the violet line with honest labels; same laying-out in the CSV and the printable order sheet. No database change. Plan file: `.claude/plans/should-we-disable-the-radiant-dragonfly.md`.
+
+## Steps
+- [x] S1. Checklist
+- [x] S2. `deliverySlots` / `restQty` in `orderStatus.js` + hand-worked cases
+- [x] S3. Dashboard form, CSV, work-order PDF; lint + build
+- [x] S4. Live-data check of the two screenshot lines; save-does-not-touch-staff-batch check on a disposable order
+- [x] S5. User checked; committed and pushed 2026-11-14
+
+## Review (S)
+
+- **What changed:** delivery staff's ordinary deliveries now fill the free Batch 1 / Batch 2 boxes of the operator's Tempahan & Pemenuhan form as locked, greyed values tagged "staf" (cartons, delivery date, expiry); extras, the operator's Penghantaran Extra and any third staff batch stay in the violet line with honest labels (Penghantaran Extra / Staf (extra) / Staf). The order CSV and the printable order sheet use the same layout (new deliverySlots / restQty in orderStatus.js).
+- **No database change.** Staff data is still stored as batch 3+ with a drop id; the boxes are display only and never written back on Save.
+- **Checked:** 11 hand-worked layout cases; live Cashew line from the screenshot now reads Batch 1 = 3 / 13 Nov 2026 / exp 10 Aug 2027 (staf, locked); a real order sheet rendered as an image; on a disposable order, Save with untouched boxes leaves the staff batch unchanged and an operator follow-up goes to Batch 2 (5 checks), test data removed.
+- **Notes:** staff corrections made in the Deliveries tab appear on next load; the boxes are locked by design so the photo and history stay correct.
+

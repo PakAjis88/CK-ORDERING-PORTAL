@@ -17,6 +17,27 @@ export const hasExtra = (order) => order.order_lines.some((l) => extraCartons(l)
 // the normal 2-batch delivery form does not edit.
 export const bufferQty = (line) => (line.delivery_batches || []).filter((b) => b.batch_no >= 3).reduce((s, b) => s + (b.qty || 0), 0)
 
+// How one line's deliveries lay out in the two Batch boxes of the operator's delivery form.
+//  - Batch 1 / Batch 2 entered by the operator stay in their own box.
+//  - Ordinary delivery-staff entries (they carry a drop_id and are not the "extra part") fill the
+//    FREE box(es), oldest delivery first. Those boxes are display only (staffSlot[n] = true).
+//  - Everything else (the operator's Penghantaran Extra, staff extras, a third staff batch) is `rest`.
+export function deliverySlots(line) {
+  const all = line.delivery_batches || []
+  const slots = { 1: all.find((b) => b.batch_no === 1) || null, 2: all.find((b) => b.batch_no === 2) || null }
+  const staffSlot = { 1: false, 2: false }
+  const staff = all
+    .filter((b) => b.batch_no >= 3 && b.drop_id && !b.is_extra_part)
+    .sort((a, b) => (a.delivered_date || '').localeCompare(b.delivered_date || '') || a.batch_no - b.batch_no)
+  const free = [1, 2].filter((n) => !slots[n])
+  const placed = new Set()
+  staff.slice(0, free.length).forEach((b, i) => { slots[free[i]] = b; staffSlot[free[i]] = true; placed.add(b) })
+  const rest = all.filter((b) => b.batch_no >= 3 && !placed.has(b))
+  return { slots, staffSlot, rest }
+}
+// Cartons in `rest`, so Batch 1 + Batch 2 + this always add up to the delivered total.
+export const restQty = (line) => deliverySlots(line).rest.reduce((s, b) => s + (b.qty || 0), 0)
+
 export const STATUS_META = {
   pending: { key: 'stPending', cls: 'bg-amber-100 text-amber-800 border-amber-200' },
   partial: { key: 'stPartial', cls: 'bg-indigo-100 text-indigo-700 border-indigo-200' },

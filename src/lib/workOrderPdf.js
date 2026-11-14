@@ -2,7 +2,7 @@ import { jsPDF } from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import { CAT, CAT_ORDER } from './i18n'
 import { fmtDate, dueDate } from './format'
-import { displayStatus } from './orderStatus'
+import { displayStatus, deliverySlots } from './orderStatus'
 
 const STATUS_MS = {
   pending: 'Menunggu', partial: 'Sebahagian', overdue: 'Tertunggak',
@@ -58,13 +58,16 @@ function drawOrderPage(doc, order) {
       idx++
       const units = l.cartons_ordered * l.units_per_carton_snapshot
       totKar += l.cartons_ordered; totUnit += units
-      const b1 = (l.delivery_batches || []).find((b) => b.batch_no === 1)
-      const b2 = (l.delivery_batches || []).find((b) => b.batch_no === 2)
+      // delivery-staff deliveries fill the free Batch 1 / Batch 2 columns; `rest` is what is left over
+      const { slots, rest } = deliverySlots(l)
+      const b1 = slots[1], b2 = slots[2]
       const all = l.delivery_batches || []
       const extra = all.reduce((s, b) => s + (b.qty || 0), 0) - l.cartons_ordered
-      const buffer = all.filter((b) => b.batch_no >= 3).reduce((s, b) => s + (b.qty || 0), 0)
+      const buffer = rest.filter((b) => b.is_buffer).reduce((s, b) => s + (b.qty || 0), 0)
+      const staffRest = rest.filter((b) => !b.is_buffer).reduce((s, b) => s + (b.qty || 0), 0)
       const remarks = []
       if (buffer > 0) remarks.push(`Buffer ${buffer}`)
+      if (staffRest > 0) remarks.push(`Staf ${staffRest}`)
       if (extra > 0) remarks.push(`${l.is_extra ? 'Penghantaran Extra' : 'Dihantar Lebih'} +${extra}`)
       body.push([
         String(idx), remarks.length ? `${l.product.name}\n${remarks.join(' · ')}` : l.product.name, String(l.cartons_ordered), String(l.units_per_carton_snapshot),
